@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <cuda_runtime.h>
 
-//kernal definition example
+//kernel definition example
 __global__ void doAdd(float* A, float* B, float* C)
 {
     int workIdx = threadIdx.x + blockDim.x * blockIdx.x;
@@ -17,7 +17,7 @@ int main()
     //dim3 block(64,64);
     //doAdd<<<grid, block>>>(A, B, C);
     // don't know how to work index multidimentional stuff yet
-    
+
     float* A;
     float* B;
     float* C;

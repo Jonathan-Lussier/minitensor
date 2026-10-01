@@ -145,6 +145,13 @@ int main()
     CUDA_CHECK(cudaDeviceSynchronize());
 
     CUDA_CHECK(cudaMemcpy(h_out, d_out, bytes, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
+    CUDA_CHECK(cudaFree(d_c));
+    CUDA_CHECK(cudaFree(d_d));
+    CUDA_CHECK(cudaFree(d_e));
+    CUDA_CHECK(cudaFree(d_f));
+    CUDA_CHECK(cudaFree(d_out));
 
     // 7. Verify on the CPU
     int errors = 0;

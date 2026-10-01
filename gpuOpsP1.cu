@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 
+// tensor class
 class Tensor{
 public:
     Tensor(std::vector<int> shape) : shape_(shape) {
@@ -19,6 +20,8 @@ private:
     std::vector<int> shape_;
 };
 
+
+//binary kernel defintion
 template <typename Op>
 __global__ void binaryKernel(const float* a, const float* b, float* out, int n, Op op) {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
@@ -28,6 +31,7 @@ struct AddOp { __device__ float operator()(float x, float y) const { return x + 
 struct SubOp { __device__ float operator()(float x, float y) const { return x - y; } };
 struct MulOp { __device__ float operator()(float x, float y) const { return x * y; } };
 
+//2in-1out operator support (binary operations)
 template <typename Op>
 Tensor binaryOp(const Tensor& a, const Tensor& b, Op op) {
     if (a.shape() != b.shape()) {
@@ -44,7 +48,7 @@ Tensor operator+(const Tensor& a, const Tensor& b) { return binaryOp(a, b, AddOp
 Tensor operator-(const Tensor& a, const Tensor& b) { return binaryOp(a, b, SubOp{}); }
 Tensor operator*(const Tensor& a, const Tensor& b) { return binaryOp(a, b, MulOp{}); }
 
-
+//1in-1out operator support (unary operations)
 template <typename Op>
 __global__ void unaryKernel(const float* a, float* out, int n, Op op) {
     int i = threadIdx.x + blockDim.x * blockIdx.x;

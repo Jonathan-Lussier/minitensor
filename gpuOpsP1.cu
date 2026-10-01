@@ -24,11 +24,9 @@ __global__ void binaryKernel(const float* a, const float* b, float* out, int n, 
     int i = threadIdx.x + blockDim.x * blockIdx.x;
     if (i < n) out[i] = op(a[i], b[i]);
 }
-
 struct AddOp { __device__ float operator()(float x, float y) const { return x + y; } };
+struct SubOp { __device__ float operator()(float x, float y) const { return x - y; } };
 struct MulOp { __device__ float operator()(float x, float y) const { return x * y; } };
-
-
 
 template <typename Op>
 Tensor binaryOp(const Tensor& a, const Tensor& b, Op op) {
@@ -43,4 +41,22 @@ Tensor binaryOp(const Tensor& a, const Tensor& b, Op op) {
 }
 
 Tensor operator+(const Tensor& a, const Tensor& b) { return binaryOp(a, b, AddOp{}); }
+Tensor operator-(const Tensor& a, const Tensor& b) { return binaryOp(a, b, SubOp{}); }
 Tensor operator*(const Tensor& a, const Tensor& b) { return binaryOp(a, b, MulOp{}); }
+
+
+template <typename Op>
+__global__ void unaryKernel(const float* a, float* out, int n, Op op) {
+    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    if (i < n) out[i] = op(a[i]);
+}
+struct NegOp { __device__ float operator()(float x) const { return x * (-1); } };
+
+template <typename Op>
+Tensor unaryOp(const Tensor& a, Op op) {
+    Tensor out(a.shape());
+    int n = out.numel(), threads = 256, blocks = (n + threads - 1) / threads;
+    unaryKernel<<<blocks, threads>>>(a.data(), out.data(), n, op);
+    return out;
+}
+Tensor operator-(const Tensor& a) { return unaryOp(a, NegOp{}); }

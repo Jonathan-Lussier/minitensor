@@ -30,6 +30,7 @@ __global__ void binaryKernel(const float* a, const float* b, float* out, int n, 
 struct AddOp { __device__ float operator()(float x, float y) const { return x + y; } };
 struct SubOp { __device__ float operator()(float x, float y) const { return x - y; } };
 struct MulOp { __device__ float operator()(float x, float y) const { return x * y; } };
+struct devOp { __device__ float operator()(float x, float y) const { return x / y; } };
 
 //2in-1out operator support (binary operations)
 template <typename Op>
@@ -47,6 +48,7 @@ Tensor binaryOp(const Tensor& a, const Tensor& b, Op op) {
 Tensor operator+(const Tensor& a, const Tensor& b) { return binaryOp(a, b, AddOp{}); }
 Tensor operator-(const Tensor& a, const Tensor& b) { return binaryOp(a, b, SubOp{}); }
 Tensor operator*(const Tensor& a, const Tensor& b) { return binaryOp(a, b, MulOp{}); }
+Tensor operator/(const Tensor& a, const Tensor& b) { return binaryOp(a, b, devOp{}); }
 
 //1in-1out operator support (unary operations)
 template <typename Op>
@@ -64,3 +66,10 @@ Tensor unaryOp(const Tensor& a, Op op) {
     return out;
 }
 Tensor operator-(const Tensor& a) { return unaryOp(a, NegOp{}); }
+
+int main()
+{
+    const int n = 1<<20;              // ~1 million elements
+    const size_t bytes = n * sizeof(float);
+
+}

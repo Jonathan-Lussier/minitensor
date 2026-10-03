@@ -105,3 +105,17 @@ Tensor unaryOp(const Tensor& a, Op op) {
     return out;
 }
 Tensor operator-(const Tensor& a) { return unaryOp(a, NegOp{}); }
+
+// 2D print function to start looking into broadcasting and n-D tensors
+void print2D(const char* name, const Tensor& t){
+    std::vector<float> v = t.toHost();
+    int rows = t.shape()[0], cols = t.shape()[1];
+    printf("%s =\n", name);
+    for (int r =0; r < rows; r++) {
+        printf("   [");
+        for (int c =0; c < cols; c++){
+            printf(" %6.2f", v[r*cols +c]);
+        }
+        printf("  ]\n");
+    }
+}

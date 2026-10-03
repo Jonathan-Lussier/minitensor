@@ -3,6 +3,9 @@
 #include <cuda_runtime.h>
 #include <vector>
 #include <memory>
+#include <string>
+#include <stdexcept>
+
 
 inline void cudaCheck(cudaError_t err, const char* what){
     if (err != cudaSuccess){
@@ -118,4 +121,27 @@ void print2D(const char* name, const Tensor& t){
         }
         printf("  ]\n");
     }
+}
+
+int main(){
+    try{
+        std::vector<int> shape = {2,3};
+
+        Tensor a = Tensor::fromHost(shape, {1.0f, 2.0f, 3.0f,
+                                            4.0f, 5.0f, 6.0f});
+        Tensor b = Tensor::fromHost(shape, {10.0f, 10.0f, 10.0f,
+                                            10.0f, 10.0f, 10.0f});
+        Tensor c = Tensor::fromHost(shape, {0.5f, 1.0f, 1.5f,
+                                            2.0f, 2.5f, 3.0f});
+        
+        Tensor out = a + b * c;
+        print2D("a", a);
+        print2D("b", b);
+        print2D("c", c);
+        print2D("a + b * c", out);   // expected: 6 12 18 / 24 30 36
+
+    } catch (const std::exception& e){
+        printf("Error: %s\n", e.what());
+    }
+    return 0;
 }

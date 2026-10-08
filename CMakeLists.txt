@@ -31,6 +31,14 @@ nanobind_add_module(minitensor bindings.cpp)
 target_link_libraries(minitensor PRIVATE tensor_core)
 # Put the .pyd next to the Python scripts so `import minitensor` works from the project root
 set_target_properties(minitensor PROPERTIES LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR})
+# Generate minitensor.pyi so IDEs (Pylance) can autocomplete the compiled module
+nanobind_add_stub(
+  minitensor_stub
+  MODULE minitensor
+  OUTPUT ${CMAKE_SOURCE_DIR}/minitensor.pyi
+  PYTHON_PATH $<TARGET_FILE_DIR:minitensor>
+  DEPENDS minitensor
+)
 
 
 add_executable(test_main tensor_test_main.cpp)

@@ -13,3 +13,7 @@ matplotlib
 #openpyxl
 
 jupyterlab
+
+
+#testing
+pytest

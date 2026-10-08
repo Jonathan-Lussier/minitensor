@@ -11,14 +11,17 @@ namespace nb = nanobind;
 using CpuArray = nb::ndarray<const float, nb::c_contig, nb::device::cpu>;
 
 NB_MODULE(minitensor, m){
-    nb::class_<Tensor>(m, "Tensor")
-        .def_static("from_list", &Tensor::fromHost)
+    m.doc() = "Minimal float32 tensor library backed by CUDA.";
+
+    nb::class_<Tensor>(m, "Tensor", "A float32 tensor stored on the GPU.")
+        .def_static("from_list", &Tensor::fromHost, nb::arg("shape"), nb::arg("values"),
+            "Create a GPU tensor from a shape and a flat list of row-major values.")
         .def_static("from_numpy", [](CpuArray arr) {
             std::vector<int> shape;
             for (size_t i = 0; i < arr.ndim(); i++) shape.push_back((int)arr.shape(i));
             return Tensor::fromHostData(shape, arr.data());
-    })
-    .def("to_list", &Tensor::toHost)
+    }, nb::arg("array"), "Create a GPU tensor by copying a C-contiguous float32 NumPy array.")
+    .def("to_list", &Tensor::toHost, "Copy the tensor to the CPU as a flat list of row-major values.")
     .def("to_numpy", [](const Tensor& t) {
         auto host = std::make_unique<float[]>(t.numel());
         t.copyToHost(host.get());
@@ -26,19 +29,25 @@ NB_MODULE(minitensor, m){
         float* raw = host.release();
         nb::capsule owner(raw, [](void* p) noexcept { delete[] static_cast<float*>(p); });
         return nb::ndarray<nb::numpy, float>(raw, shape.size(), shape.data(), owner);
-    })
-    .def_prop_ro("shape", &Tensor::shape)
-    .def(nb::self + nb::self)
-    .def(nb::self - nb::self)
-    .def(nb::self * nb::self)
-    .def(nb::self / nb::self)
-    .def(-nb::self)
-    .def("__mul__",     [](const Tensor& a, float s) { return a * Tensor::scalar(s); })
-    .def("__rmul__",    [](const Tensor& a, float s) { return Tensor::scalar(s) * a; })
-    .def("__add__",     [](const Tensor& a, float s) { return a + Tensor::scalar(s); })
-    .def("__radd__",    [](const Tensor& a, float s) { return Tensor::scalar(s) + a; })
-    .def("__rsub__",    [](const Tensor& a, float s) { return Tensor::scalar(s) - a; })
-    .def("__rtruediv__",[](const Tensor& a, float s) { return Tensor::scalar(s) / a; })
+    }, "Copy the tensor to the CPU as a float32 NumPy array with the same shape.")
+    .def_prop_ro("shape", &Tensor::shape, "The tensor's dimensions as a list of ints.")
+    .def(nb::self + nb::self, nb::arg("other"), "Elementwise add (2D broadcasting supported).")
+    .def(nb::self - nb::self, nb::arg("other"), "Elementwise subtract (2D broadcasting supported).")
+    .def(nb::self * nb::self, nb::arg("other"), "Elementwise multiply (2D broadcasting supported).")
+    .def(nb::self / nb::self, nb::arg("other"), "Elementwise divide (2D broadcasting supported).")
+    .def(-nb::self, "Elementwise negation.")
+    .def("__mul__",     [](const Tensor& a, float s) { return a * Tensor::scalar(s); },
+        nb::arg("scalar"), "Multiply every element by a scalar.")
+    .def("__rmul__",    [](const Tensor& a, float s) { return Tensor::scalar(s) * a; },
+        nb::arg("scalar"), "Multiply every element by a scalar.")
+    .def("__add__",     [](const Tensor& a, float s) { return a + Tensor::scalar(s); },
+        nb::arg("scalar"), "Add a scalar to every element.")
+    .def("__radd__",    [](const Tensor& a, float s) { return Tensor::scalar(s) + a; },
+        nb::arg("scalar"), "Add a scalar to every element.")
+    .def("__rsub__",    [](const Tensor& a, float s) { return Tensor::scalar(s) - a; },
+        nb::arg("scalar"), "Subtract every element from a scalar.")
+    .def("__rtruediv__",[](const Tensor& a, float s) { return Tensor::scalar(s) / a; },
+        nb::arg("scalar"), "Divide a scalar by every element.")
     .def("__repr__", [](const Tensor& t) {
         return "Tensor(shape=" + shapeToString(t.shape()) + ")";
     });

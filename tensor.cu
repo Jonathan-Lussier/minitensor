@@ -38,6 +38,9 @@ struct MulOp { __device__ float operator()(float x, float y) const { return x * 
 struct DivOp { __device__ float operator()(float x, float y) const { return x / y; } };
 //Unary
 struct NegOp { __device__ float operator()(float x) const { return x * (-1); } };
+//Unary reductive
+struct SumOp { __device__ float operator()(float x) const { return x * (-1); } };
+struct MeanOp { __device__ float operator()(float x) const { return x * (-1); } };
 
 
 //kernel defintions
@@ -114,6 +117,17 @@ Tensor binaryOp(const Tensor& a, const Tensor& b, Op op) {
 template <typename Op>
 Tensor unaryOp(const Tensor& a, Op op) {
     Tensor out(a.shape());
+    int n = out.numel(), threads = 256, blocks = (n + threads - 1) / threads;
+    unaryKernel<<<blocks, threads>>>(a.data(), out.data(), n, op);
+    cudaCheck(cudaGetLastError(), "kernel launch");
+    return out;
+}
+
+
+template <typename Op>
+Tensor unaryReducOp(const Tensor& a, Op op) {
+    std::vector<int> shp(1) = 1;
+    Tensor out(shp);
     int n = out.numel(), threads = 256, blocks = (n + threads - 1) / threads;
     unaryKernel<<<blocks, threads>>>(a.data(), out.data(), n, op);
     cudaCheck(cudaGetLastError(), "kernel launch");

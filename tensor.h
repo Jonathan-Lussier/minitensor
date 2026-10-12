@@ -26,6 +26,7 @@ Tensor operator-(const Tensor& a, const Tensor& b);
 Tensor operator*(const Tensor& a, const Tensor& b);
 Tensor operator/(const Tensor& a, const Tensor& b);
 Tensor operator-(const Tensor& a);
+Tensor sum(const Tensor& a);
 
 std::string shapeToString(const std::vector<int>& shape);
 void printTensor(const char* name, const Tensor& t);

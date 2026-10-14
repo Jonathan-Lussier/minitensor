@@ -33,7 +33,7 @@ int main()
     //dim3 block(32,32); // max 1024 threads per block, so 64x64 (4096) would fail to launch
     //add<<<grid, block>>>(A, B, C, n);
     // don't know how to work index multidimentional stuff yet
-    const int n = 1<<10;              // ~1 million elements
+    const int n = 1<<20;              // ~1 million elements
     const size_t bytes = n * sizeof(float);
     // 1. Allocate and fill arrays in CPU memory
     float *h_a   = (float *)malloc(bytes);
@@ -70,9 +70,9 @@ int main()
     // 7. Verify on the CPU
     int errors = 0;
     for (int i = 0; i < n; i++) {
-        //add error check here
+        if((h_a[i] + h_b[i]) != h_c[i]  ){errors++;}
     }
     printf("Launched %d blocks x %d threads. Errors: %d\n",
            blocks, threadsPerBlock, errors);
-    printf("Sample value = %.6f\n", h_out[3]);
+    printf("Sample value = %.6f\n", h_c[3]);
 }

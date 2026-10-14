@@ -23,3 +23,17 @@ def test_incompatible_shapes_raise():
     a = mt.Tensor.from_numpy(np.ones((2, 3), dtype=np.float32))
     b = mt.Tensor.from_numpy(np.ones((2,), dtype=np.float32))
     with pytest.raises(RuntimeError, match="incompatible shapes"): a + b
+
+@pytest.mark.parametrize("n", [1, 7, 255, 256, 257, 1000, 1 << 20, 3_000_001])
+def test_sum(n):
+    a = rng.standard_normal(n).astype(np.float32)
+    result = mt.Tensor.from_numpy(a).sum().to_numpy()
+    expected = a.astype(np.float64).sum()       # float64 reference: closer to the true sum
+    np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
+
+@pytest.mark.parametrize("n", [0, 1, 7, 255, 256, 257, 1000, 1 << 20, 3_000_001])
+def test_mean(n):
+    a = rng.standard_normal(n).astype(np.float32)
+    result = mt.Tensor.from_numpy(a).sum().to_numpy()
+    expected = a.astype(np.float64).sum()       # float64 reference: closer to the true sum
+    np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)

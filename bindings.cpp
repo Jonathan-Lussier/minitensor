@@ -48,9 +48,14 @@ NB_MODULE(minitensor, m){
         nb::arg("scalar"), "Subtract every element from a scalar.")
     .def("__rtruediv__",[](const Tensor& a, float s) { return Tensor::scalar(s) / a; },
         nb::arg("scalar"), "Divide a scalar by every element.")
+    .def("sum", [](const Tensor& t) { return sum(t); },         
+        "Sum of all elements, returned as a tensor.")
+    .def("mean", [](const Tensor& t) { return mean(t); },         
+        "Sum of all elements, deivde by number of elements, returned as a tensor.")
     .def("__repr__", [](const Tensor& t) {
         return "Tensor(shape=" + shapeToString(t.shape()) + ")";
     });
 
-
+    m.def("sum", &sum, nb::arg("a"), "Sum of all elements of a tensor.");
+    m.def("mean", &mean, nb::arg("a"), "mean of all elements of a tensor.");
 }

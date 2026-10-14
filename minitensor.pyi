@@ -67,4 +67,18 @@ class Tensor:
     def __rtruediv__(self, scalar: float) -> Tensor:
         """Divide a scalar by every element."""
 
+    def sum(self) -> Tensor:
+        """Sum of all elements, returned as a tensor."""
+
+    def mean(self) -> Tensor:
+        """
+        Sum of all elements, deivde by number of elements, returned as a tensor.
+        """
+
     def __repr__(self) -> str: ...
+
+def sum(a: Tensor) -> Tensor:
+    """Sum of all elements of a tensor."""
+
+def mean(a: Tensor) -> Tensor:
+    """mean of all elements of a tensor."""

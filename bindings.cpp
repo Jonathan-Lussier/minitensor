@@ -50,6 +50,10 @@ NB_MODULE(minitensor, m){
         nb::arg("scalar"), "Divide a scalar by every element.")
     .def("sum", [](const Tensor& t) { return sum(t); },         
         "Sum of all elements, returned as a tensor.")
+    .def("max", [](const Tensor& t) { return max(t); },         
+        "Maximum of all elements, returned as a tensor.")
+    .def("min", [](const Tensor& t) { return min(t); },         
+        "Minimum of all elements, returned as a tensor.")
     .def("mean", [](const Tensor& t) { return mean(t); },         
         "Sum of all elements, deivde by number of elements, returned as a tensor.")
     .def("__repr__", [](const Tensor& t) {
@@ -57,5 +61,7 @@ NB_MODULE(minitensor, m){
     });
 
     m.def("sum", &sum, nb::arg("a"), "Sum of all elements of a tensor.");
+    m.def("max", &max, nb::arg("a"), "Maximum of all elements of a tensor.");
+    m.def("min", &min, nb::arg("a"), "Minimum of all elements of a tensor.");
     m.def("mean", &mean, nb::arg("a"), "mean of all elements of a tensor.");
 }

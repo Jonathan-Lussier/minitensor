@@ -34,6 +34,21 @@ def test_sum(n):
 @pytest.mark.parametrize("n", [0, 1, 7, 255, 256, 257, 1000, 1 << 20, 3_000_001])
 def test_mean(n):
     a = rng.standard_normal(n).astype(np.float32)
-    result = mt.Tensor.from_numpy(a).sum().to_numpy()
-    expected = a.astype(np.float64).sum()       # float64 reference: closer to the true sum
+    result = mt.Tensor.from_numpy(a).mean().to_numpy()
+    expected = a.astype(np.float64).mean()       # float64 reference: closer to the true sum
+    np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
+
+
+@pytest.mark.parametrize('n', [0,1,2,255,256,1000, 1<<20, 4_000_001])
+def test_max(n):
+    a = rng.standard_normal(n).astype(np.float32)
+    result = mt.Tensor.from_numpy(a).max().to_numpy()
+    expected = a.astype(np.float64).max()
+    np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
+
+@pytest.mark.parametrize('n', [0,1,2,255,256,1000, 1<<20, 4_000_001])
+def test_min(n):
+    a = rng.standard_normal(n).astype(np.float32)
+    result = mt.Tensor.from_numpy(a).min().to_numpy()
+    expected = a.astype(np.float64).min()
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)

@@ -70,6 +70,12 @@ class Tensor:
     def sum(self) -> Tensor:
         """Sum of all elements, returned as a tensor."""
 
+    def max(self) -> Tensor:
+        """Maximum of all elements, returned as a tensor."""
+
+    def min(self) -> Tensor:
+        """Minimum of all elements, returned as a tensor."""
+
     def mean(self) -> Tensor:
         """
         Sum of all elements, deivde by number of elements, returned as a tensor.
@@ -79,6 +85,12 @@ class Tensor:
 
 def sum(a: Tensor) -> Tensor:
     """Sum of all elements of a tensor."""
+
+def max(a: Tensor) -> Tensor:
+    """Maximum of all elements of a tensor."""
+
+def min(a: Tensor) -> Tensor:
+    """Minimum of all elements of a tensor."""
 
 def mean(a: Tensor) -> Tensor:
     """mean of all elements of a tensor."""

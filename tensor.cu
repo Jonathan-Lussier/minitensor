@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <cuda_runtime.h>
 #include <vector>
 #include <memory>
@@ -71,22 +72,70 @@ __global__ void unaryKernel(const float* a, float* out, int n, Op op) {
 }
 
 //summing kernel
-template <int BLOCK>
+template <int BLOCK_SIZE>
 __global__ void sumKernel(const float* in, float* out, int n) {
-    __shared__ float sdata[BLOCK];          // fast memory shared by this block's threads
+    __shared__ float sdata[BLOCK_SIZE];          // fast memory shared by this block's threads
     int tid = threadIdx.x;
 
     // Step 1: each thread sums several elements into a register (grid-stride loop)
     float local = 0.0f;
-    for (int i = blockIdx.x * BLOCK + tid; i < n; i += BLOCK * gridDim.x) {
+    for (int i = blockIdx.x * BLOCK_SIZE + tid; i < n; i += BLOCK_SIZE * gridDim.x) {
         local += in[i];
     }
     sdata[tid] = local;
     __syncthreads();                         // wait until every thread has written
 
     // Step 2: tree reduction, halving the active threads each round
-    for (int s = BLOCK / 2; s > 0; s >>= 1) {
+    for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
         if (tid < s) sdata[tid] += sdata[tid + s];
+        __syncthreads();                     // finish this round before starting the next
+    }
+
+    // Step 3: thread 0 writes this block's result
+    if (tid == 0) out[blockIdx.x] = sdata[0];
+}
+
+//maxxing kernel
+template <int BLOCK_SIZE>
+__global__ void maxKernel(const float* in, float* out, int n) {
+    __shared__ float sdata[BLOCK_SIZE];          // fast memory shared by this block's threads
+    int tid = threadIdx.x;
+
+    // Step 1: each thread sums several elements into a register (grid-stride loop)
+    float local = -INFINITY;
+    for (int i = blockIdx.x * BLOCK_SIZE + tid; i < n; i += BLOCK_SIZE * gridDim.x) {
+        if (local< in[i]) local = in[i];
+    }
+    sdata[tid] = local;
+    __syncthreads();                         // wait until every thread has written
+
+        // Step 2: tree reduction, halving the active threads each round
+    for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
+        if (tid < s) sdata[tid] = fmaxf(sdata[tid], sdata[tid+s]);
+        __syncthreads();                     // finish this round before starting the next
+    }
+
+    // Step 3: thread 0 writes this block's result
+    if (tid == 0) out[blockIdx.x] = sdata[0];
+}
+
+//minning kernel
+template <int BLOCK_SIZE>
+__global__ void minKernel(const float* in, float* out, int n) {
+    __shared__ float sdata[BLOCK_SIZE];          // fast memory shared by this block's threads
+    int tid = threadIdx.x;
+
+    // Step 1: each thread sums several elements into a register (grid-stride loop)
+    float local = INFINITY;
+    for (int i = blockIdx.x * BLOCK_SIZE + tid; i < n; i += BLOCK_SIZE * gridDim.x) {
+        if (local > in[i]) local = in[i];
+    }
+    sdata[tid] = local;
+    __syncthreads();                         // wait until every thread has written
+
+        // Step 2: tree reduction, halving the active threads each round
+    for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
+        if (tid < s) sdata[tid] = fminf(sdata[tid], sdata[tid+s]);
         __syncthreads();                     // finish this round before starting the next
     }
 
@@ -227,6 +276,38 @@ Tensor mean(const Tensor& a) {
         throw std::runtime_error("empty tensor, devide by 0 error" + a.numel()); 
     } 
     return unaryOp(sum(a), ScaleOp{1.0f / a.numel()});
+}
+
+Tensor max(const Tensor& a) {
+    constexpr int threads = 256;
+    int n = a.numel();
+    if (n == 0) return Tensor::scalar(0.0f);   // launching 0 blocks is an error
+
+    int blocks = std::min((n + threads - 1) / threads, 1024);
+    Tensor partials({blocks});
+    maxKernel<threads><<<blocks, threads>>>(a.data(), partials.data(), n);
+    cudaCheck(cudaGetLastError(), "max pass 1");
+
+    Tensor out(std::vector<int>{});             // scalar output, shape []
+    maxKernel<threads><<<1, threads>>>(partials.data(), out.data(), blocks);
+    cudaCheck(cudaGetLastError(), "max pass 2");
+    return out;
+}
+
+Tensor min(const Tensor& a) {
+    constexpr int threads = 256;
+    int n = a.numel();
+    if (n == 0) return Tensor::scalar(0.0f);   // launching 0 blocks is an error
+
+    int blocks = std::min((n + threads - 1) / threads, 1024);
+    Tensor partials({blocks});
+    minKernel<threads><<<blocks, threads>>>(a.data(), partials.data(), n);
+    cudaCheck(cudaGetLastError(), "min pass 1");
+
+    Tensor out(std::vector<int>{});             // scalar output, shape []
+    minKernel<threads><<<1, threads>>>(partials.data(), out.data(), blocks);
+    cudaCheck(cudaGetLastError(), "min pass 2");
+    return out;
 }
 
 

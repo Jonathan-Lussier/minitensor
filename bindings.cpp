@@ -50,6 +50,8 @@ NB_MODULE(minitensor, m){
         nb::arg("scalar"), "Divide a scalar by every element.")
     .def("sum", [](const Tensor& t) { return sum(t); },         
         "Sum of all elements, returned as a tensor.")
+    .def("naiveMatMul", [](const Tensor& t, const Tensor& s) { return naiveMatMul(t, s); },         
+        "Naive matmul, inefficient for long and narrow matrices.")
     .def("max", [](const Tensor& t) { return max(t); },         
         "Maximum of all elements, returned as a tensor.")
     .def("min", [](const Tensor& t) { return min(t); },         
@@ -64,4 +66,5 @@ NB_MODULE(minitensor, m){
     m.def("max", &max, nb::arg("a"), "Maximum of all elements of a tensor.");
     m.def("min", &min, nb::arg("a"), "Minimum of all elements of a tensor.");
     m.def("mean", &mean, nb::arg("a"), "mean of all elements of a tensor.");
+    m.def("naiveMatMul", &naiveMatMul, nb::arg("a"), nb::arg("b"), "naive matrix multiplication of 2D tensors a and b.");
 }

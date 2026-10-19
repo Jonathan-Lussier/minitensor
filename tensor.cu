@@ -143,7 +143,26 @@ __global__ void minKernel(const float* in, float* out, int n) {
     if (tid == 0) out[blockIdx.x] = sdata[0];
 }
 
+//naive matmul product
+__global__ void naiveMatMulKernel(const float* a_mat, const float * b_mat, float * out, 
+                                 int rows, int innerDim, int cols, int flattendn) {
+                                    //flattendn is rows*cols
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= flattendn) return;
+
+    float temp = 0.0f;
+    int curr_row = i / cols;
+    int curr_col = i % cols;
+    for(int j = 0; j < innerDim; j++){
+        temp += a_mat[curr_row * innerDim + j] * b_mat[j * cols + curr_col];
+    } 
+    out[i] = temp;
+}
+
+//transpose
+
 //host side kernel wrappers
+
 //2D broadcasting wrapper
 template <typename Op>
 Tensor broadcastOp(const Tensor& a, const Tensor& b, Op op){
@@ -254,6 +273,37 @@ Tensor operator/(const Tensor& a, const Tensor& b) { return binaryOp(a, b, DivOp
 Tensor operator-(const Tensor& a) { return unaryOp(a, NegOp{}); }
 
 //public tensor functions
+Tensor naiveMatMul(const Tensor& a, const Tensor& b){
+    
+    if (a.shape().size() > 2 || b.shape().size() > 2){
+        throw std::runtime_error("matmul got 3D shapes: " +shapeToString(a.shape()) +
+                                ", " + shapeToString(b.shape()));
+    }
+    
+    if (a.shape().size() == 1 || b.shape().size() == 1){
+        throw std::runtime_error("matmul cannot handle vector-matrix multiplication: " +shapeToString(a.shape()) +
+                                ", " + shapeToString(b.shape()));
+    }
+    int M =  a.shape()[0];
+    int K =  a.shape()[1];
+    int N =  b.shape()[1];
+    int numdot = M*N;
+    if (b.shape()[0] != K){
+        throw std::runtime_error("inner shapes: " + std::to_string(K) + ", "
+                                  + std::to_string(b.shape()[1]) + " don't match");
+    }
+
+    Tensor out({M,N});
+    if (numdot == 0) return out;                       // launching 0 blocks is an error
+
+    int threads = 256;
+    int blocks = (numdot + threads - 1)/ threads;
+    naiveMatMulKernel<<<blocks, threads>>>(a.data(), b.data(), out.data(), M, K, N, numdot);
+    cudaCheck(cudaGetLastError(), "matmul launch");
+    return out;
+}
+
+
 //pairwise sum
 Tensor sum(const Tensor& a) {
     constexpr int threads = 256;

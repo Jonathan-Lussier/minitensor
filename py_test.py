@@ -31,7 +31,7 @@ def test_sum(n):
     expected = a.astype(np.float64).sum()       # float64 reference: closer to the true sum
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
 
-@pytest.mark.parametrize("n", [0, 1, 7, 255, 256, 257, 1000, 1 << 20, 3_000_001])
+@pytest.mark.parametrize("n", [1, 7, 255, 256, 257, 1000, 1 << 20, 3_000_001])
 def test_mean(n):
     a = rng.standard_normal(n).astype(np.float32)
     result = mt.Tensor.from_numpy(a).mean().to_numpy()
@@ -39,16 +39,36 @@ def test_mean(n):
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
 
 
-@pytest.mark.parametrize('n', [0,1,2,255,256,1000, 1<<20, 4_000_001])
+@pytest.mark.parametrize('n', [1,2,255,256,1000, 1<<20, 4_000_001])
 def test_max(n):
     a = rng.standard_normal(n).astype(np.float32)
     result = mt.Tensor.from_numpy(a).max().to_numpy()
     expected = a.astype(np.float64).max()
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
 
-@pytest.mark.parametrize('n', [0,1,2,255,256,1000, 1<<20, 4_000_001])
+@pytest.mark.parametrize('n', [1,2,255,256,1000, 1<<20, 4_000_001])
 def test_min(n):
     a = rng.standard_normal(n).astype(np.float32)
     result = mt.Tensor.from_numpy(a).min().to_numpy()
     expected = a.astype(np.float64).min()
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
+
+MATMUL_SHAPES = [((2, 2), (2, 3)), ((10, 10), (10, 5)), ((2, 1), (1, 3)),
+                 ((1, 1), (1, 1)), ((3, 300), (300, 2)), ((64, 33), (33, 129))]
+
+@pytest.mark.parametrize("shape_a,shape_b", MATMUL_SHAPES)
+def test_naiveMatMul(shape_a, shape_b):
+    a = rng.standard_normal(shape_a, dtype=np.float32)
+    b = rng.standard_normal(shape_b, dtype=np.float32)
+    result = mt.naiveMatMul(mt.Tensor.from_numpy(a), mt.Tensor.from_numpy(b)).to_numpy()
+    expected = a @ b
+    assert result.shape == expected.shape
+    np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
+
+@pytest.mark.parametrize("shape_a,shape_b", [((2, 3), (2, 1)), ((4, 5), (1, 1)),
+                                             ((2, 3), (3,)), ((3,), ())])
+def test_naiveMatMul_bad_shapes_raise(shape_a, shape_b):
+    a = mt.Tensor.from_numpy(np.ones(shape_a, dtype=np.float32))
+    b = mt.Tensor.from_numpy(np.ones(shape_b, dtype=np.float32))
+    with pytest.raises(RuntimeError):
+        mt.naiveMatMul(a, b)

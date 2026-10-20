@@ -30,6 +30,7 @@ Tensor sum(const Tensor& a);
 Tensor mean(const Tensor& a);
 Tensor max(const Tensor& a);
 Tensor min(const Tensor& a);
+Tensor dot(const Tensor& a, const Tensor& b);
 Tensor naiveMatMul(const Tensor& a, const Tensor& b);
 
 std::string shapeToString(const std::vector<int>& shape);

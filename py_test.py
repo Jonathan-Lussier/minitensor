@@ -72,3 +72,20 @@ def test_naiveMatMul_bad_shapes_raise(shape_a, shape_b):
     b = mt.Tensor.from_numpy(np.ones(shape_b, dtype=np.float32))
     with pytest.raises(RuntimeError):
         mt.naiveMatMul(a, b)
+
+DOT_SHAPES = [(1,1), (2,2), (10,10), (255,255), (256,256), (4_000_001, 4_000_001)]
+@pytest.mark.parametrize("shape_a,shape_b", DOT_SHAPES)
+def test_dot(shape_a, shape_b):
+    a = rng.standard_normal(shape_a, dtype=np.float32)
+    b = rng.standard_normal(shape_b, dtype=np.float32)
+    result = mt.dot(mt.Tensor.from_numpy(a), mt.Tensor.from_numpy(b)).to_numpy()
+    expected = np.dot(a,b)
+    assert result.shape == expected.shape
+    np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
+
+@pytest.mark.parametrize("shape_a,shape_b", [(2,3), (3,2), (0,0)])
+def test_dot_bad_shapes(shape_a, shape_b):
+    a = mt.Tensor.from_numpy(np.ones(shape_a, dtype=np.float32))
+    b = mt.Tensor.from_numpy(np.ones(shape_b, dtype=np.float32))
+    with pytest.raises(RuntimeError):
+        mt.dot(a, b)

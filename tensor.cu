@@ -321,6 +321,14 @@ Tensor sum(const Tensor& a) {
     return out;
 }
 
+Tensor dot(const Tensor & a, const Tensor & b){
+    if (a.shape().size() != 1 || b.shape().size() != 1){throw std::runtime_error("dot product got non vector shapes:"
+                                                        + shapeToString(a.shape()) + shapeToString(b.shape()));}
+    if (a.shape()[0] != b.shape()[0]){throw std::runtime_error("dot product got non equal vector lengths:"
+                                                    + shapeToString(a.shape()) + shapeToString(b.shape()));}
+    return(sum(a*b));
+}
+
 Tensor mean(const Tensor& a) {
     if (a.numel() == 0){
         throw std::runtime_error("empty tensor, devide by 0 error" + a.numel()); 

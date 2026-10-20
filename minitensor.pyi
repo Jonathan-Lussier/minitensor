@@ -70,6 +70,9 @@ class Tensor:
     def sum(self) -> Tensor:
         """Sum of all elements, returned as a tensor."""
 
+    def dot(self, arg: Tensor, /) -> Tensor:
+        """dot product of two vectors."""
+
     def naiveMatMul(self, arg: Tensor, /) -> Tensor:
         """Naive matmul, inefficient for long and narrow matrices."""
 
@@ -97,6 +100,9 @@ def min(a: Tensor) -> Tensor:
 
 def mean(a: Tensor) -> Tensor:
     """mean of all elements of a tensor."""
+
+def dot(a: Tensor, b: Tensor) -> Tensor:
+    """dot product of two vectors."""
 
 def naiveMatMul(a: Tensor, b: Tensor) -> Tensor:
     """naive matrix multiplication of 2D tensors a and b."""

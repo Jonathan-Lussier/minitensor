@@ -9,6 +9,21 @@ SHAPES = [((2, 3), (2, 3)), ((2, 3), (3,)), ((2, 3), (2, 1)),
           ((2, 1), (1, 3)), ((3,), ()), ((4, 5), (1, 1))]
 OPS = [operator.add, operator.sub, operator.mul, operator.truediv]
 
+shape = [(3,3)]
+@pytest.mark.parametrize("shape", shape)
+def test_overloads(shape):
+    anp = np.asarray(rng.standard_normal(shape, dtype=np.float32))
+    bnp = np.asarray(rng.standard_normal(shape, dtype=np.float32)) 
+    cnp = np.asarray(rng.standard_normal(shape, dtype=np.float32)) 
+    a = mt.Tensor.from_numpy(anp)
+    b = mt.Tensor.from_numpy(bnp)
+    c = mt.Tensor.from_numpy(cnp)
+    out = a + b * c
+    result = out.to_numpy()
+    expected = anp + bnp * cnp
+    assert result.shape == expected.shape
+    np.testing.assert_allclose(result, expected, rtol=1e-6)
+
 @pytest.mark.parametrize("shape_a,shape_b", SHAPES)
 @pytest.mark.parametrize("op", OPS)
 def test_binary_ops(shape_a, shape_b, op):

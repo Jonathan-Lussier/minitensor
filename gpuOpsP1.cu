@@ -112,10 +112,13 @@ struct MulOp { __device__ float operator()(float x, float y) const { return x * 
 struct DivOp { __device__ float operator()(float x, float y) const { return x / y; } };
 
 struct NegOp { __device__ float operator()(float x) const { return x * (-1); } };
+struct PowOp {
+    float p;
+    __device__ float operator()(float x) const { return powf(x, p); }
+};
 
 
-
-//binary kernel defintion
+//binary kernel definition
 template <typename Op>
 __global__ void binaryKernel(const float* a, const float* b, float* out, int n, Op op) {
     int i = threadIdx.x + blockDim.x * blockIdx.x;
@@ -200,6 +203,8 @@ Tensor operator*(const Tensor& a, const Tensor& b) { return binaryOp(a, b, MulOp
 Tensor operator/(const Tensor& a, const Tensor& b) { return binaryOp(a, b, DivOp{}); }
 
 Tensor operator-(const Tensor& a) { return unaryOp(a, NegOp{}); }
+Tensor pow(const Tensor& a, float p) { return unaryOp(a, PowOp{p}); }
+
 
 
 int main(){

@@ -32,6 +32,8 @@ Tensor max(const Tensor& a);
 Tensor min(const Tensor& a);
 Tensor dot(const Tensor& a, const Tensor& b);
 Tensor naiveMatMul(const Tensor& a, const Tensor& b);
+Tensor tiledMatMul(const Tensor& a, const Tensor& b);
 
 std::string shapeToString(const std::vector<int>& shape);
 void printTensor(const char* name, const Tensor& t);
+void synchronize();

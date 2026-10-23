@@ -54,6 +54,8 @@ NB_MODULE(minitensor, m){
         "dot product of two vectors.")
     .def("naiveMatMul", [](const Tensor& t, const Tensor& s) { return naiveMatMul(t, s); },         
         "Naive matmul, inefficient for long and narrow matrices.")
+    .def("tiledMatMul", [](const Tensor& t, const Tensor& s) { return tiledMatMul(t, s); },         
+        "tiledMatMul matmul, more efficient.")
     .def("max", [](const Tensor& t) { return max(t); },         
         "Maximum of all elements, returned as a tensor.")
     .def("min", [](const Tensor& t) { return min(t); },         
@@ -70,4 +72,6 @@ NB_MODULE(minitensor, m){
     m.def("mean", &mean, nb::arg("a"), "mean of all elements of a tensor.");
     m.def("dot", &dot, nb::arg("a"), nb::arg("b"), "dot product of two vectors.");
     m.def("naiveMatMul", &naiveMatMul, nb::arg("a"), nb::arg("b"), "naive matrix multiplication of 2D tensors a and b.");
+    m.def("tiledMatMul", &tiledMatMul, nb::arg("a"), nb::arg("b"), "tiled matrix multiplication of 2D tensors a and b.");
+    m.def("synchronize", &synchronize);
 }

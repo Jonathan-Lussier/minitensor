@@ -159,6 +159,42 @@ __global__ void naiveMatMulKernel(const float* a_mat, const float * b_mat, float
     out[i] = temp;
 }
 
+//matmul a different way
+__global__ void jonsMatMul(){
+//need transpose for this
+}
+
+//tiled matmul,  much faster
+template <int TILE>
+__global__ void tiledMatMulKernel(const float * A, const float * B, float * out,
+                                    int M, int K, int N){
+    __shared__ float As[TILE][TILE];
+    __shared__ float Bs[TILE][TILE];
+    int tx = threadIdx.x; 
+    int ty = threadIdx.y;
+    int row = blockIdx.y * TILE + ty;   // output row this thread works on
+    int col = blockIdx.x * TILE + tx;   // output column this thread works on
+
+    float acc = 0.0f;
+    int numtiles = (K + TILE -1)/TILE;
+
+    for (int t = 0; t < numtiles; t++){
+        int aCol = t * TILE + tx;
+        int bRow = t * TILE + ty;
+        As[ty][tx] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0f;
+        Bs[ty][tx] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0f;
+
+        __syncthreads();
+        #pragma unroll
+        for (int k = 0; k < TILE; k++){
+            acc += As[ty][k] * Bs[k][tx];
+        }
+        __syncthreads();
+    }
+    
+    if (row < M && col < N) out[row * N + col] = acc;
+}
+
 //transpose
 
 //host side kernel wrappers
@@ -303,6 +339,67 @@ Tensor naiveMatMul(const Tensor& a, const Tensor& b){
     return out;
 }
 
+//public tensor functions
+Tensor tiledMatMul(const Tensor& a, const Tensor& b){
+    
+    if (a.shape().size() > 2 || b.shape().size() > 2){
+        throw std::runtime_error("matmul got 3D shapes: " +shapeToString(a.shape()) +
+                                ", " + shapeToString(b.shape()));
+    }
+    
+    if (a.shape().size() == 1 || b.shape().size() == 1){
+        throw std::runtime_error("matmul cannot handle vector-matrix multiplication: " +shapeToString(a.shape()) +
+                                ", " + shapeToString(b.shape()));
+    }
+    int M =  a.shape()[0];
+    int K =  a.shape()[1];
+    int N =  b.shape()[1];
+    int numdot = M*N;
+    if (b.shape()[0] != K){
+        throw std::runtime_error("inner shapes: " + std::to_string(K) + ", "
+                                  + std::to_string(b.shape()[0]) + " don't match");
+    }
+
+    Tensor out({M,N});
+    if (numdot == 0) return out;                       // launching 0 blocks is an error
+
+    constexpr int tile_size = 16;
+    dim3 threads(tile_size, tile_size);
+    dim3 blocks((N + tile_size - 1) / tile_size, (M + tile_size - 1) / tile_size);
+    tiledMatMulKernel<tile_size><<<blocks, threads>>>(a.data(), b.data(), out.data(), M, K, N);
+    cudaCheck(cudaGetLastError(), "matmul launch");
+    return out;
+}
+
+Tensor jonsMatMul(const Tensor& a, const Tensor& b){
+    
+    if (a.shape().size() > 2 || b.shape().size() > 2){
+        throw std::runtime_error("matmul got 3D shapes: " +shapeToString(a.shape()) +
+                                ", " + shapeToString(b.shape()));
+    }
+    
+    if (a.shape().size() == 1 || b.shape().size() == 1){
+        throw std::runtime_error("matmul cannot handle vector-matrix multiplication: " +shapeToString(a.shape()) +
+                                ", " + shapeToString(b.shape()));
+    }
+    int M =  a.shape()[0];
+    int K =  a.shape()[1];
+    int N =  b.shape()[1];
+    int numdot = M*N;
+    if (b.shape()[0] != K){
+        throw std::runtime_error("inner shapes: " + std::to_string(K) + ", "
+                                  + std::to_string(b.shape()[1]) + " don't match");
+    }
+
+    Tensor out({M,N});
+    if (numdot == 0) return out;                       // launching 0 blocks is an error
+
+    int threads = 256;
+    int blocks = (numdot + threads - 1)/ threads;
+    naiveMatMulKernel<<<blocks, threads>>>(a.data(), b.data(), out.data(), M, K, N, numdot);
+    cudaCheck(cudaGetLastError(), "matmul launch");
+    return out;
+}
 
 //pairwise sum
 Tensor sum(const Tensor& a) {
@@ -400,6 +497,9 @@ void printTensor(const char* name, const Tensor& t) {
         throw std::runtime_error("printTensor: only up to 2D supported, got " + shapeToString(s));
     }
 }
+
+void synchronize() { cudaCheck(cudaDeviceSynchronize(), "synchronize"); }
+
 
 
 

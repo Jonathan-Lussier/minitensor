@@ -104,3 +104,12 @@ def test_dot_bad_shapes(shape_a, shape_b):
     b = mt.Tensor.from_numpy(np.ones(shape_b, dtype=np.float32))
     with pytest.raises(RuntimeError):
         mt.dot(a, b)
+
+@pytest.mark.parametrize("shape_a,shape_b", MATMUL_SHAPES)
+def test_tiledMatMul(shape_a, shape_b):
+    a = rng.standard_normal(shape_a, dtype=np.float32)
+    b = rng.standard_normal(shape_b, dtype=np.float32)
+    result = mt.tiledMatMul(mt.Tensor.from_numpy(a), mt.Tensor.from_numpy(b)).to_numpy()
+    expected = a @ b
+    assert result.shape == expected.shape
+    np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)

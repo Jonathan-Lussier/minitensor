@@ -76,6 +76,9 @@ class Tensor:
     def naiveMatMul(self, arg: Tensor, /) -> Tensor:
         """Naive matmul, inefficient for long and narrow matrices."""
 
+    def tiledMatMul(self, arg: Tensor, /) -> Tensor:
+        """tiledMatMul matmul, more efficient."""
+
     def max(self) -> Tensor:
         """Maximum of all elements, returned as a tensor."""
 
@@ -106,3 +109,8 @@ def dot(a: Tensor, b: Tensor) -> Tensor:
 
 def naiveMatMul(a: Tensor, b: Tensor) -> Tensor:
     """naive matrix multiplication of 2D tensors a and b."""
+
+def tiledMatMul(a: Tensor, b: Tensor) -> Tensor:
+    """tiled matrix multiplication of 2D tensors a and b."""
+
+def synchronize() -> None: ...

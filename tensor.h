@@ -3,6 +3,11 @@
 #include <string>
 #include <vector>
 
+struct TensorImpl {
+    std::shared_ptr<float> data;    
+    std::vector<int> shape;
+};
+
 class Tensor {
 public:
     explicit Tensor(const std::vector<int>& shape);
@@ -12,13 +17,12 @@ public:
     std::vector<float> toHost() const;
     void copyToHost(float* dest) const;
 
-    float* data() const { return data_.get(); }
-    const std::vector<int>& shape() const { return shape_; }
+    float* data() const { return impl_->data.get(); }
+    const std::vector<int>& shape() const { return impl_->shape; }
     int numel() const;
 
 private:
-    std::shared_ptr<float> data_;
-    std::vector<int> shape_;
+    std::shared_ptr<TensorImpl> impl_;
 };
 
 Tensor operator+(const Tensor& a, const Tensor& b);

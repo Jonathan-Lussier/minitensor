@@ -256,16 +256,17 @@ Tensor unaryOp(const Tensor& a, Op op) {
 
 
 // CPU side tensor class
-Tensor::Tensor(const std::vector<int>& shape) : shape_(shape) {
+Tensor::Tensor(const std::vector<int>& shape) : impl_(std::make_shared<TensorImpl>()) {
+    impl_->shape = shape;                         
     float* ptr = nullptr;
     cudaCheck(cudaMalloc(&ptr, numel() * sizeof(float)), "cudaMalloc");
     // shared_ptr frees the GPU memory when the last Tensor using it is destroyed
-    data_ = std::shared_ptr<float>(ptr, [](float* p) { cudaFree(p); });
+    impl_->data = std::shared_ptr<float>(ptr, [](float* p) { cudaFree(p); });
 }
 
 int Tensor::numel() const {
     int n = 1;                       // a scalar (shape {}) has 1 element
-    for (int d : shape_) n *= d;
+    for (int d : impl_->shape) n *= d;
     return n;
 }
 

@@ -250,10 +250,31 @@ Tensor unaryOp(const Tensor& a, Op op) {
     return out;
 }
 
+//grad stuff
+bool needsGrad(const Tensor& a, const Tensor& b) {
+    return isGradEnabled() && (a.requiresGrad() || b.requiresGrad());
+}
+bool needsGrad(const Tensor& a) {
+    return isGradEnabled() && a.requiresGrad();
+}
 
+void recordNode(Tensor& out, const char* name, std::vector<Tensor> inputs,
+                std::function<std::vector<Tensor>(const Tensor&)> backward) {
+    auto node = std::make_shared<Node>();
+    node->inputs = std::move(inputs);
+    node->op_name = name;
+    node->backward = std::move(backward);
+    out.impl()->grad_fn = node;
+    out.setRequiresGrad(true);   // so ops that use `out` will record nodes too
+}
 
 }//end of unnamed namespace
 
+// tensor.cu (outside the unnamed namespace)
+static bool g_gradEnabled = true;
+bool isGradEnabled() { return g_gradEnabled; }
+NoGradGuard::NoGradGuard() : prev_(g_gradEnabled) { g_gradEnabled = false; }
+NoGradGuard::~NoGradGuard() { g_gradEnabled = prev_; }
 
 // CPU side tensor class
 Tensor::Tensor(const std::vector<int>& shape) : impl_(std::make_shared<TensorImpl>()) {
@@ -303,11 +324,65 @@ std::vector<float> Tensor::toHost() const {
 }
 
 //operators
-Tensor operator+(const Tensor& a, const Tensor& b) { return binaryOp(a, b, AddOp{}); }
-Tensor operator-(const Tensor& a, const Tensor& b) { return binaryOp(a, b, SubOp{}); }
-Tensor operator*(const Tensor& a, const Tensor& b) { return binaryOp(a, b, MulOp{}); }
-Tensor operator/(const Tensor& a, const Tensor& b) { return binaryOp(a, b, DivOp{}); }
-Tensor operator-(const Tensor& a) { return unaryOp(a, NegOp{}); }
+Tensor operator+(const Tensor& a, const Tensor& b){
+    Tensor out = binaryOp(a, b, AddOp{});
+    if (needsGrad(a,b)){
+        if (a.shape() != b.shape() )
+            throw std::runtime_error("add: gradients for broadcast shapes not supported... yet");
+        recordNode(out, "add", {a,b}, [](const Tensor& g){
+            return std::vector<Tensor>{g, g};
+        });
+    }
+    return out;
+}
+Tensor operator-(const Tensor& a, const Tensor& b){
+    Tensor out = binaryOp(a, b, SubOp{});
+    if (needsGrad(a,b)){
+        if (a.shape() != b.shape() )
+            throw std::runtime_error("sub: gradients for broadcast shapes not supported... yet");
+        recordNode(out, "sub", {a,b}, [](const Tensor& g){
+            return std::vector<Tensor>{g, -g};
+        });
+    }
+    return out;
+}
+Tensor operator*(const Tensor& a, const Tensor& b){
+    Tensor out = binaryOp(a, b, MulOp{});
+    if (needsGrad(a,b)){
+        if (a.shape() != b.shape() )
+            throw std::runtime_error("mul: gradients for broadcast shapes not supported... yet");
+        recordNode(out, "mul", {a,b}, [a, b](const Tensor& g){
+            return std::vector<Tensor>{g*b, g*a};  //here's dat chain rule
+        });
+    }
+    return out;
+}
+Tensor operator-(const Tensor& a) { 
+    Tensor out = unaryOp(a, NegOp{});
+    if (needsGrad(a)){
+        recordNode(out, "neg", {a}, [](const Tensor& g){
+            return std::vector<Tensor>{-g};
+        });
+    }
+    return out; 
+}
+
+
+Tensor operator/(const Tensor& a, const Tensor& b){
+    Tensor out = binaryOp(a, b, DivOp{});
+    if (needsGrad(a,b)){
+        if (a.shape() != b.shape() )
+            throw std::runtime_error("div: gradients for broadcast shapes not supported... yet");
+        recordNode(out, "div", {a,b}, [a, b](const Tensor& g){
+            return std::vector<Tensor>{g/b, -g*a/(b*b)};  //da chain 
+        });
+    }
+    return out;
+}
+
+
+
+
 
 //public tensor functions
 Tensor naiveMatMul(const Tensor& a, const Tensor& b){

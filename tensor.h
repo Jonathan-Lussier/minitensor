@@ -44,7 +44,10 @@ public:
     void setRequiresGrad(bool r) { impl_->requires_grad = r; }
     bool hasGrad() const { return impl_->grad != nullptr; }
     Tensor grad() const { return Tensor(impl_->grad); }
-
+    void backward();
+    static Tensor full(const std::vector<int>& shape, float value);   
+    const std::shared_ptr<TensorImpl>& implPtr() const { return impl_; }
+    
 private:
     std::shared_ptr<TensorImpl> impl_;
 };

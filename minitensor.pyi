@@ -92,6 +92,17 @@ class Tensor:
 
     def __repr__(self) -> str: ...
 
+    @property
+    def requires_grad(self) -> bool: ...
+
+    @requires_grad.setter
+    def requires_grad(self, arg: bool, /) -> None: ...
+
+    @property
+    def grad(self) -> Tensor | None: ...
+
+    def backward(self) -> None: ...
+
 def sum(a: Tensor) -> Tensor:
     """Sum of all elements of a tensor."""
 

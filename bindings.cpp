@@ -3,6 +3,7 @@
 #include <nanobind/operators.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/optional.h>
 #include <memory>
 #include "tensor.h"
 
@@ -63,8 +64,16 @@ NB_MODULE(minitensor, m){
     .def("mean", [](const Tensor& t) { return mean(t); },         
         "Sum of all elements, deivde by number of elements, returned as a tensor.")
     .def("__repr__", [](const Tensor& t) {
-        return "Tensor(shape=" + shapeToString(t.shape()) + ")";
-    });
+        return "Tensor(shape=" + shapeToString(t.shape()) + ")";})
+
+    // grad stuff
+    .def_prop_rw("requires_grad", &Tensor::requiresGrad, &Tensor::setRequiresGrad)
+            .def_prop_ro("grad", [](const Tensor& t) -> std::optional<Tensor> {
+                if (!t.hasGrad()) return std::nullopt;   // shows up as None in Python
+                return t.grad();
+        })
+    .def("backward", &Tensor::backward)
+    ;
 
     m.def("sum", &sum, nb::arg("a"), "Sum of all elements of a tensor.");
     m.def("max", &max, nb::arg("a"), "Maximum of all elements of a tensor.");

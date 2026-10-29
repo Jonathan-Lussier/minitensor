@@ -9,6 +9,7 @@
 #include <string>
 #include <stdexcept>
 #include <algorithm>
+#include <unordered_set>
 
 //simaliar to p1, but built for python binding
 
@@ -268,13 +269,63 @@ void recordNode(Tensor& out, const char* name, std::vector<Tensor> inputs,
     out.setRequiresGrad(true);   // so ops that use `out` will record nodes too
 }
 
-}//end of unnamed namespace
+void accumulateGrad(const Tensor& t, const Tensor& g) {
+    TensorImpl* impl = t.impl();
+    if (!impl->grad) impl->grad = g.implPtr();                       // first gradient: store it
+    else             impl->grad = (Tensor(impl->grad) + g).implPtr();  // later ones: new sum
+}
 
-// tensor.cu (outside the unnamed namespace)
+}
+//end of unnamed namespace
+
+//grad stuff
 static bool g_gradEnabled = true;
 bool isGradEnabled() { return g_gradEnabled; }
 NoGradGuard::NoGradGuard() : prev_(g_gradEnabled) { g_gradEnabled = false; }
 NoGradGuard::~NoGradGuard() { g_gradEnabled = prev_; }
+
+void Tensor::backward() {
+    if (numel() != 1)
+        throw std::runtime_error("backward: only supported for single-element tensors, got shape " +
+                                 shapeToString(shape()));
+    if (!requiresGrad())
+        throw std::runtime_error("backward: tensor does not require grad");
+
+    //Topological order like micrograd's build_topo
+    std::vector<Tensor> topo;
+    std::unordered_set<TensorImpl*> visited;
+    std::function<void(const Tensor&)> build = [&](const Tensor& t) {
+        if (!visited.insert(t.impl()).second) return;// if already visited return
+        if (t.impl()->grad_fn)
+            for (const Tensor& input : t.impl()->grad_fn->inputs) build(input);
+        topo.push_back(t);
+    };
+    build(*this);
+
+    NoGradGuard guard;   // gradient doesn't make new graph nodes
+
+    //d(loss)/d(loss) = 1  like micrograd's self.grad = 1
+    accumulateGrad(*this, Tensor::full(shape(), 1.0f));
+
+    // 3. Walk backward, applying the chain rule at each node
+    for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
+        const Tensor& t = *it;
+        Node* node = t.impl()->grad_fn.get();
+        if (!node || !t.hasGrad()) continue;                    // leaf, or nothing flowed here
+
+        std::vector<Tensor> grads = node->backward(t.grad());
+        for (size_t i = 0; i < node->inputs.size(); i++) {
+            const Tensor& input = node->inputs[i];
+            if (!input.requiresGrad()) continue;
+            if (grads[i].shape() != input.shape())
+                throw std::runtime_error(std::string(node->op_name) + " backward: gradient shape " +
+                                         shapeToString(grads[i].shape()) + " doesn't match input shape " +
+                                         shapeToString(input.shape()));
+            accumulateGrad(input, grads[i]);
+        }
+    }
+}
+
 
 // CPU side tensor class
 Tensor::Tensor(const std::vector<int>& shape) : impl_(std::make_shared<TensorImpl>()) {
@@ -312,6 +363,12 @@ Tensor Tensor::scalar(float value) {
     return fromHostData({}, &value);
 }
 
+Tensor Tensor::full(const std::vector<int>& shape, float value) {
+    int n = 1;
+    for (int d : shape) n *= d;
+    return fromHost(shape, std::vector<float>(n, value));
+}
+
 void Tensor::copyToHost(float* dest) const {
     cudaCheck(cudaMemcpy(dest, data(), numel() * sizeof(float),
                          cudaMemcpyDeviceToHost), "cudaMemcpy device to host");
@@ -322,6 +379,7 @@ std::vector<float> Tensor::toHost() const {
     copyToHost(values.data());
     return values;
 }
+
 
 //operators
 Tensor operator+(const Tensor& a, const Tensor& b){
@@ -366,8 +424,6 @@ Tensor operator-(const Tensor& a) {
     }
     return out; 
 }
-
-
 Tensor operator/(const Tensor& a, const Tensor& b){
     Tensor out = binaryOp(a, b, DivOp{});
     if (needsGrad(a,b)){
@@ -379,8 +435,6 @@ Tensor operator/(const Tensor& a, const Tensor& b){
     }
     return out;
 }
-
-
 
 
 
@@ -491,6 +545,13 @@ Tensor sum(const Tensor& a) {
     Tensor out(std::vector<int>{});             // scalar output, shape []
     sumKernel<threads><<<1, threads>>>(partials.data(), out.data(), blocks);
     cudaCheck(cudaGetLastError(), "sum pass 2");
+
+    
+    if (needsGrad(a)){
+        recordNode(out, "sum", {a}, [shape = a.shape()](const Tensor& g) {
+            return std::vector<Tensor>{ Tensor::full(shape, 1.0f) * g };   // broadcasts g up to the input's shape
+        });
+    }
     return out;
 }
 

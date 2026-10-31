@@ -70,6 +70,16 @@ class Tensor:
     def sum(self) -> Tensor:
         """Sum of all elements, returned as a tensor."""
 
+    def sumAxis(self, axis: int) -> Tensor:
+        """
+        Sum a 2D tensor along one axis, keeping it as size 1. axis=0: sum down each column, (rows, cols) -> (1, cols). axis=1: sum across each row, (rows, cols) -> (rows, 1).
+        """
+
+    def reshape(self, shape: Sequence[int]) -> Tensor:
+        """
+        Return a tensor with a new shape and the same number of elements. The result shares memory with the original (no copy).
+        """
+
     def dot(self, arg: Tensor, /) -> Tensor:
         """dot product of two vectors."""
 
@@ -105,6 +115,14 @@ class Tensor:
 
 def sum(a: Tensor) -> Tensor:
     """Sum of all elements of a tensor."""
+
+def sumAxis(a: Tensor, axis: int) -> Tensor:
+    """
+    Sum a 2D tensor along one axis, keeping it as size 1 (see Tensor.sum_axis).
+    """
+
+def reshape(a: Tensor, shape: Sequence[int]) -> Tensor:
+    """Reshape a tensor without copying its data (see Tensor.reshape)."""
 
 def max(a: Tensor) -> Tensor:
     """Maximum of all elements of a tensor."""

@@ -275,6 +275,46 @@ void accumulateGrad(const Tensor& t, const Tensor& g) {
     else             impl->grad = (Tensor(impl->grad) + g).implPtr();  // later ones: new sum
 }
 
+
+//need to make a sum axis function here:
+__global__ void sumAxis0Kernel(const float* in, float* out, int rows, int cols) {
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= cols) return;
+    float acc = 0.0f;
+    for (int r = 0; r < rows; r++) acc += in[r * cols + c];
+    out[c] = acc;
+}
+//this is more complcated bc there's no easy way to coalesce
+template <int BLOCK_SIZE>
+__global__ void sumAxis1Kernel(const float* in, float* out, int rows, int cols) {
+    __shared__ float sdata[BLOCK_SIZE];
+    int tid = threadIdx.x;
+    const float* row = in + blockIdx.x * cols;   // this block's row
+
+    //threads stride across the row, so neighbors read neighbors (coalesced)
+    float local = 0.0f;
+    for (int c = tid; c < cols; c += BLOCK_SIZE) local += row[c];
+    sdata[tid] = local;
+    __syncthreads();
+
+    //tree reduction
+    for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
+        if (tid < s) sdata[tid] += sdata[tid + s];
+        __syncthreads();
+    }
+    if (tid == 0) out[blockIdx.x] = sdata[0];
+}
+
+
+Tensor unbroadcast(const Tensor& g, const std::vector<int>& target) {
+    if (g.shape() == target) return g;                 // nothing was broadcast
+    std::vector<int> gs = to2D(g.shape()), ts = to2D(target);
+    Tensor r = reshape(g, gs);                         // view as 2D
+    if (ts[0] == 1 && gs[0] != 1) r = sumAxis(r, 0);   // input was stretched down the rows
+    if (ts[1] == 1 && gs[1] != 1) r = sumAxis(r, 1);   // input was stretched across the columns
+    return reshape(r, target);                         // back to the input's real shape
+}
+
 }
 //end of unnamed namespace
 
@@ -326,6 +366,24 @@ void Tensor::backward() {
     }
 }
 
+//this just changes shape labels, keeps same data, creates new TensorImpl
+Tensor reshape(const Tensor& a, const std::vector<int>& shape) {
+    int n = 1;
+    for (int d : shape) n *= d;
+    if (n != a.numel())
+        throw std::runtime_error("reshape: can't reshape " + shapeToString(a.shape()) +
+                                 " to " + shapeToString(shape));
+    auto impl = std::make_shared<TensorImpl>();
+    impl->data = a.impl()->data;     
+    impl->shape = shape;
+    Tensor out(impl);
+    if (needsGrad(a)) {
+        recordNode(out, "reshape", {a}, [orig = a.shape()](const Tensor& g) {
+            return std::vector<Tensor>{ reshape(g, orig) };
+        });
+    }
+    return out;
+}
 
 // CPU side tensor class
 Tensor::Tensor(const std::vector<int>& shape) : impl_(std::make_shared<TensorImpl>()) {
@@ -385,32 +443,27 @@ std::vector<float> Tensor::toHost() const {
 Tensor operator+(const Tensor& a, const Tensor& b){
     Tensor out = binaryOp(a, b, AddOp{});
     if (needsGrad(a,b)){
-        if (a.shape() != b.shape() )
-            throw std::runtime_error("add: gradients for broadcast shapes not supported... yet");
-        recordNode(out, "add", {a,b}, [](const Tensor& g){
-            return std::vector<Tensor>{g, g};
+        recordNode(out, "add", {a,b}, [sa = a.shape(), sb = b.shape()](const Tensor& g) {
+            return std::vector<Tensor>{ unbroadcast(g, sa), unbroadcast(g, sb) };
         });
     }
     return out;
 }
 Tensor operator-(const Tensor& a, const Tensor& b){
     Tensor out = binaryOp(a, b, SubOp{});
-    if (needsGrad(a,b)){
-        if (a.shape() != b.shape() )
-            throw std::runtime_error("sub: gradients for broadcast shapes not supported... yet");
-        recordNode(out, "sub", {a,b}, [](const Tensor& g){
-            return std::vector<Tensor>{g, -g};
+    if (needsGrad(a, b)) {
+        recordNode(out, "sub", {a, b}, [sa = a.shape(), sb = b.shape()](const Tensor& g) {
+            return std::vector<Tensor>{ unbroadcast(g, sa), unbroadcast(-g, sb) };
         });
     }
     return out;
 }
 Tensor operator*(const Tensor& a, const Tensor& b){
     Tensor out = binaryOp(a, b, MulOp{});
-    if (needsGrad(a,b)){
-        if (a.shape() != b.shape() )
-            throw std::runtime_error("mul: gradients for broadcast shapes not supported... yet");
-        recordNode(out, "mul", {a,b}, [a, b](const Tensor& g){
-            return std::vector<Tensor>{g*b, g*a};  //here's dat chain rule
+    if (needsGrad(a, b)) {
+        recordNode(out, "mul", {a, b}, [a, b](const Tensor& g) {
+            return std::vector<Tensor>{ unbroadcast(g * b, a.shape()),
+                                        unbroadcast(g * a, b.shape()) };
         });
     }
     return out;
@@ -427,10 +480,9 @@ Tensor operator-(const Tensor& a) {
 Tensor operator/(const Tensor& a, const Tensor& b){
     Tensor out = binaryOp(a, b, DivOp{});
     if (needsGrad(a,b)){
-        if (a.shape() != b.shape() )
-            throw std::runtime_error("div: gradients for broadcast shapes not supported... yet");
-        recordNode(out, "div", {a,b}, [a, b](const Tensor& g){
-            return std::vector<Tensor>{g/b, -g*a/(b*b)};  //da chain 
+        recordNode(out, "div", {a, b}, [a, b](const Tensor& g) {
+            return std::vector<Tensor>{ unbroadcast(g / b, a.shape()),
+                                        unbroadcast(-g * a / (b * b), b.shape()) };
         });
     }
     return out;
@@ -550,6 +602,34 @@ Tensor sum(const Tensor& a) {
     if (needsGrad(a)){
         recordNode(out, "sum", {a}, [shape = a.shape()](const Tensor& g) {
             return std::vector<Tensor>{ Tensor::full(shape, 1.0f) * g };   // broadcasts g up to the input's shape
+        });
+    }
+    return out;
+}
+
+
+Tensor sumAxis(const Tensor& a, int axis) {
+    if (a.shape().size() != 2)
+        throw std::runtime_error("sumAxis: expected a 2D tensor, got " + shapeToString(a.shape()));
+    if (axis != 0 && axis != 1)
+        throw std::runtime_error("sumAxis: axis must be 0 or 1, got " + std::to_string(axis));
+
+    int rows = a.shape()[0], cols = a.shape()[1];
+    Tensor out(axis == 0 ? std::vector<int>{1, cols} : std::vector<int>{rows, 1});
+    if (out.numel() == 0) return out;            // launching 0 blocks is an error
+
+    constexpr int threads = 256;
+    if (axis == 0) {
+        int blocks = (cols + threads - 1) / threads;
+        sumAxis0Kernel<<<blocks, threads>>>(a.data(), out.data(), rows, cols);
+    } else {
+        sumAxis1Kernel<threads><<<rows, threads>>>(a.data(), out.data(), rows, cols);
+    }
+    cudaCheck(cudaGetLastError(), "sumAxis launch");
+
+    if (needsGrad(a)) {
+        recordNode(out, "sumAxis", {a}, [shape = a.shape()](const Tensor& g) {
+            return std::vector<Tensor>{ Tensor::full(shape, 1.0f) * g };
         });
     }
     return out;

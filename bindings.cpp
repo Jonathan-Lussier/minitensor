@@ -51,6 +51,15 @@ NB_MODULE(minitensor, m){
         nb::arg("scalar"), "Divide a scalar by every element.")
     .def("sum", [](const Tensor& t) { return sum(t); },         
         "Sum of all elements, returned as a tensor.")
+
+    .def("sumAxis", &sumAxis, nb::arg("axis"),
+            "Sum a 2D tensor along one axis, keeping it as size 1. "
+            "axis=0: sum down each column, (rows, cols) -> (1, cols). "
+            "axis=1: sum across each row, (rows, cols) -> (rows, 1).")
+    .def("reshape", &reshape, nb::arg("shape"),
+            "Return a tensor with a new shape and the same number of elements. "
+            "The result shares memory with the original (no copy).")
+
     .def("dot", [](const Tensor& t, const Tensor& s) { return dot(t, s); },         
         "dot product of two vectors.")
     .def("naiveMatMul", [](const Tensor& t, const Tensor& s) { return naiveMatMul(t, s); },         
@@ -75,7 +84,14 @@ NB_MODULE(minitensor, m){
     .def("backward", &Tensor::backward)
     ;
 
+
+
+
     m.def("sum", &sum, nb::arg("a"), "Sum of all elements of a tensor.");
+    m.def("sumAxis", &sumAxis, nb::arg("a"), nb::arg("axis"),
+        "Sum a 2D tensor along one axis, keeping it as size 1 (see Tensor.sum_axis).");
+    m.def("reshape", &reshape, nb::arg("a"), nb::arg("shape"),
+          "Reshape a tensor without copying its data (see Tensor.reshape).");
     m.def("max", &max, nb::arg("a"), "Maximum of all elements of a tensor.");
     m.def("min", &min, nb::arg("a"), "Minimum of all elements of a tensor.");
     m.def("mean", &mean, nb::arg("a"), "mean of all elements of a tensor.");

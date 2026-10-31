@@ -1,10 +1,11 @@
+// tensor.h
 #pragma once
 #include <memory>
 #include <string>
 #include <vector>
 #include <functional>
+#include <stdexcept>
 
-// tensor.h
 bool isGradEnabled();
 class NoGradGuard {
 public:
@@ -43,7 +44,10 @@ public:
     bool requiresGrad() const { return impl_->requires_grad; }
     void setRequiresGrad(bool r) { impl_->requires_grad = r; }
     bool hasGrad() const { return impl_->grad != nullptr; }
-    Tensor grad() const { return Tensor(impl_->grad); }
+    Tensor grad() const {
+    if (!impl_->grad) throw std::runtime_error("grad: this tensor has no gradient (did you call backward()?)");
+    return Tensor(impl_->grad);
+    }    
     void backward();
     static Tensor full(const std::vector<int>& shape, float value);   
     const std::shared_ptr<TensorImpl>& implPtr() const { return impl_; }
@@ -65,6 +69,8 @@ Tensor operator*(const Tensor& a, const Tensor& b);
 Tensor operator/(const Tensor& a, const Tensor& b);
 Tensor operator-(const Tensor& a);
 Tensor sum(const Tensor& a);
+Tensor sumAxis(const Tensor& a, int axis);
+Tensor reshape(const Tensor& a, const std::vector<int>& shape);
 Tensor mean(const Tensor& a);
 Tensor max(const Tensor& a);
 Tensor min(const Tensor& a);

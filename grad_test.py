@@ -18,6 +18,7 @@ def value_of(t):
 
 def numeric_grad(f, x, eps=1e-2):
     """Estimate d f(x) / dx by nudging each element of x up and down."""
+    x = np.asarray(x)                     
     g = np.zeros(x.shape, dtype=np.float64)
     for i in range(x.size):
         xp = x.copy(); xp.flat[i] += eps
@@ -126,6 +127,27 @@ def test_grad_numeric(op):
     a_np = rng.standard_normal(4).astype(np.float32)
     b_np = (rng.standard_normal(4) + 3.0).astype(np.float32)   # keep away from zero for division
 
+    def loss(a_vals, b_vals):   # forward pass only, returns a float
+        a = mt.Tensor.from_numpy(a_vals.astype(np.float32))
+        b = mt.Tensor.from_numpy(b_vals.astype(np.float32))
+        return value_of(mt.sum(op(a, b)))
+
+    a = mt.Tensor.from_numpy(a_np); a.requires_grad = True
+    b = mt.Tensor.from_numpy(b_np); b.requires_grad = True
+    mt.sum(op(a, b)).backward()
+
+    expected_a = numeric_grad(lambda x: loss(x, b_np), a_np)
+    expected_b = numeric_grad(lambda x: loss(a_np, x), b_np)
+    np.testing.assert_allclose(a.grad.to_numpy(), expected_a, rtol=1e-2, atol=1e-3)
+    np.testing.assert_allclose(b.grad.to_numpy(), expected_b, rtol=1e-2, atol=1e-3)
+
+
+BROADCAST_SHAPES = [((2, 3), (3,)), ((2, 3), (2, 1)), ((2, 1), (1, 3)), ((3,), ()), ((4, 5), (1, 1))]
+@pytest.mark.parametrize("shape_a,shape_b", BROADCAST_SHAPES)
+@pytest.mark.parametrize("op", OPS, ids=lambda op: op.__name__)
+def test_grad_numeric_broadcast(op, shape_a, shape_b):
+    a_np = rng.standard_normal(shape_a).astype(np.float32)
+    b_np = (rng.standard_normal(shape_b) + 3.0).astype(np.float32)
     def loss(a_vals, b_vals):   # forward pass only, returns a float
         a = mt.Tensor.from_numpy(a_vals.astype(np.float32))
         b = mt.Tensor.from_numpy(b_vals.astype(np.float32))

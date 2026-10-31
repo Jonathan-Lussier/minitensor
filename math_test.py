@@ -113,3 +113,12 @@ def test_tiledMatMul(shape_a, shape_b):
     expected = a @ b
     assert result.shape == expected.shape
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
+
+@pytest.mark.parametrize("shape", [(1, 1), (3, 5), (64, 10), (7, 1000), (1000, 7)])
+@pytest.mark.parametrize("axis", [0, 1])
+def test_sum_axis(shape, axis):
+    x = rng.standard_normal(shape).astype(np.float32)
+    result = mt.sumAxis(mt.Tensor.from_numpy(x), axis).to_numpy()
+    expected = x.sum(axis=axis, keepdims=True)
+    assert result.shape == expected.shape
+    np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)

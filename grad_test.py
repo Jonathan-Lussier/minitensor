@@ -26,6 +26,13 @@ def numeric_grad(f, x, eps=1e-2):
         g.flat[i] = (f(xp) - f(xm)) / (2 * eps)
     return g
 
+def grad_np(t) -> np.ndarray:
+    """Return t's gradient as a NumPy array, failing clearly if there isn't one."""
+    g = t.grad
+    assert g is not None, "tensor has no gradient (was backward() called?)"
+    return g.to_numpy()
+
+
 #Hand-checked scalar examples
 #    Each case: (name, inputs, function, expected value, expected gradients)
 #    Gradients worked out by hand with the chain rule.
@@ -60,7 +67,6 @@ SCALAR_CASES = [
      lambda v: (v["a"] + v["b"]) * (v["a"] - v["b"]),
      5.0, {"a": 6.0, "b": -4.0}),
 ]
-
 
 @pytest.mark.parametrize("name,inputs,fn,expected_value,expected_grads",
                          SCALAR_CASES, ids=[c[0] for c in SCALAR_CASES])
@@ -114,7 +120,8 @@ def test_grad_mul_add_vector():
 
     loss = mt.sum(a * b + a)
     loss.backward()
-
+    assert a.grad is not None
+    assert b.grad is not None
     np.testing.assert_allclose(a.grad.to_numpy(), b_np + 1, rtol=1e-6)
     np.testing.assert_allclose(b.grad.to_numpy(), a_np, rtol=1e-6)
 
@@ -138,6 +145,8 @@ def test_grad_numeric(op):
 
     expected_a = numeric_grad(lambda x: loss(x, b_np), a_np)
     expected_b = numeric_grad(lambda x: loss(a_np, x), b_np)
+    assert a.grad is not None
+    assert b.grad is not None
     np.testing.assert_allclose(a.grad.to_numpy(), expected_a, rtol=1e-2, atol=1e-3)
     np.testing.assert_allclose(b.grad.to_numpy(), expected_b, rtol=1e-2, atol=1e-3)
 
@@ -159,5 +168,86 @@ def test_grad_numeric_broadcast(op, shape_a, shape_b):
 
     expected_a = numeric_grad(lambda x: loss(x, b_np), a_np)
     expected_b = numeric_grad(lambda x: loss(a_np, x), b_np)
+    assert a.grad is not None
+    assert b.grad is not None
     np.testing.assert_allclose(a.grad.to_numpy(), expected_a, rtol=1e-2, atol=1e-3)
     np.testing.assert_allclose(b.grad.to_numpy(), expected_b, rtol=1e-2, atol=1e-3)
+
+def test_relu_forward():
+    x = rng.standard_normal((4, 5)).astype(np.float32)
+    result = mt.relu(mt.Tensor.from_numpy(x)).to_numpy()
+    np.testing.assert_array_equal(result, np.maximum(x, 0))
+
+def test_relu_grad():
+    x_np = rng.standard_normal((4, 5)).astype(np.float32)
+    w_np = rng.standard_normal((4, 5)).astype(np.float32)
+    x = mt.Tensor.from_numpy(x_np); x.requires_grad = True
+
+    mt.sum(mt.relu(x) * mt.Tensor.from_numpy(w_np)).backward()
+
+    np.testing.assert_array_equal(grad_np(x), np.where(x_np > 0, w_np, 0))
+
+def np_softmax(x):
+    e = np.exp(x - x.max(axis=1, keepdims=True))
+    return e / e.sum(axis=1, keepdims=True)
+
+@pytest.mark.parametrize("shape", [(1, 1), (2, 3), (64, 10), (3, 1000)])
+def test_softmax_forward(shape):
+    x = rng.standard_normal(shape).astype(np.float32)
+    result = mt.softmax(mt.Tensor.from_numpy(x)).to_numpy()
+    np.testing.assert_allclose(result, np_softmax(x), rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(result.sum(axis=1), 1.0, rtol=1e-5)   # rows sum to 1
+
+def test_softmax_stable_with_large_values():
+    x = np.array([[1000.0, 1001.0, 1002.0]], dtype=np.float32)
+    result = mt.softmax(mt.Tensor.from_numpy(x)).to_numpy()
+    assert np.all(np.isfinite(result))
+    np.testing.assert_allclose(result, np_softmax(x), rtol=1e-5)
+
+def test_exp_log_forward():
+    x = rng.standard_normal((3, 4)).astype(np.float32)
+    np.testing.assert_allclose(mt.exp(mt.Tensor.from_numpy(x)).to_numpy(), np.exp(x), rtol=1e-6)
+
+    p = np.abs(x) + 0.1          # log needs positive inputs
+    np.testing.assert_allclose(mt.log(mt.Tensor.from_numpy(p)).to_numpy(), np.log(p), rtol=1e-6)
+
+def test_exp_log_grad():
+    x_np = rng.standard_normal((3, 4)).astype(np.float32)
+    w_np = rng.standard_normal((3, 4)).astype(np.float32)
+    w = mt.Tensor.from_numpy(w_np)
+
+    x = mt.Tensor.from_numpy(x_np); x.requires_grad = True
+    mt.sum(mt.exp(x) * w).backward()
+    np.testing.assert_allclose(grad_np(x), w_np * np.exp(x_np), rtol=1e-5)
+
+    p_np = np.abs(x_np) + 0.1
+    p = mt.Tensor.from_numpy(p_np); p.requires_grad = True
+    mt.sum(mt.log(p) * w).backward()
+    np.testing.assert_allclose(grad_np(p), w_np / p_np, rtol=1e-5)
+
+def np_cross_entropy(x, y):
+    shifted = x - x.max(axis=1, keepdims=True)
+    log_probs = shifted - np.log(np.exp(shifted).sum(axis=1, keepdims=True))
+    return -log_probs[np.arange(len(y)), y].mean()
+
+def test_cross_entropy():
+    B, C = 8, 10
+    x_np = rng.standard_normal((B, C)).astype(np.float32)
+    y_np = rng.integers(0, C, size=B)
+
+    x = mt.Tensor.from_numpy(x_np); x.requires_grad = True
+    labels = mt.Tensor.from_numpy(y_np.astype(np.float32))
+
+    loss = mt.softmax_cross_entropy(x, labels)
+    assert loss.item() == pytest.approx(np_cross_entropy(x_np, y_np), rel=1e-5)
+
+    loss.backward()
+    expected = np_softmax(x_np)
+    expected[np.arange(B), y_np] -= 1.0
+    np.testing.assert_allclose(grad_np(x), expected / B, rtol=1e-5, atol=1e-6)
+
+def test_cross_entropy_stable():
+    x = mt.Tensor.from_numpy(np.array([[1000.0, 0.0, -1000.0]], dtype=np.float32))
+    labels = mt.Tensor.from_numpy(np.array([2.0], dtype=np.float32))
+    loss = mt.softmax_cross_entropy(x, labels).item()
+    assert np.isfinite(loss) and loss == pytest.approx(2000.0, rel=1e-5)

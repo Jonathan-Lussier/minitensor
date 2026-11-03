@@ -38,12 +38,21 @@ struct AddOp { __device__ float operator()(float x, float y) const { return x + 
 struct SubOp { __device__ float operator()(float x, float y) const { return x - y; } };
 struct MulOp { __device__ float operator()(float x, float y) const { return x * y; } };
 struct DivOp { __device__ float operator()(float x, float y) const { return x / y; } };
+
 //Unary
 struct NegOp { __device__ float operator()(float x) const { return x * (-1); } };
+
+
+//Stuct operations
+struct ReluOp { __device__ float operator()(float x) const { return fmaxf(x, 0.0f); } };
+struct ReluBackOp { __device__ float operator()(float g, float x) const { return x > 0.0f ? g : 0.0f; } };
 struct ScaleOp {
     float s;
     __device__ float operator()(float x) const { return x * s; }
 };
+struct MaxOp { __device__ float operator()(float a, float b) const { return fmaxf(a, b); } };
+struct ExpOp { __device__ float operator()(float x) const { return expf(x); } };
+struct LogOp { __device__ float operator()(float x) const { return logf(x); } };
 
 //kernel defintions
 //binary kernel defintion
@@ -63,6 +72,14 @@ __global__ void broadcastKernel2D(const float* a, int aStrideR, int aStrideC,
         int r = i / cols, c = i % cols;
         out[i] = op(a[r * aStrideR + c * aStrideC], b[r * bStrideR + c * bStrideC]);
     }
+}
+
+//Transpose
+__global__ void transposeKernel(const float* a, int rows, int cols, float* out){
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= rows * cols) return;
+    int r = i / cols, c = i % cols;
+    out[c * rows + r] = a[i];
 }
 
 //unary kernel
@@ -196,7 +213,6 @@ __global__ void tiledMatMulKernel(const float * A, const float * B, float * out,
     if (row < M && col < N) out[row * N + col] = acc;
 }
 
-//transpose
 
 //host side kernel wrappers
 
@@ -275,8 +291,7 @@ void accumulateGrad(const Tensor& t, const Tensor& g) {
     else             impl->grad = (Tensor(impl->grad) + g).implPtr();  // later ones: new sum
 }
 
-
-//need to make a sum axis function here:
+//kernels that sum along an axis and collapse 1 dimension, spilt into 2 functions 
 __global__ void sumAxis0Kernel(const float* in, float* out, int rows, int cols) {
     int c = blockIdx.x * blockDim.x + threadIdx.x;
     if (c >= cols) return;
@@ -305,6 +320,74 @@ __global__ void sumAxis1Kernel(const float* in, float* out, int rows, int cols) 
     if (tid == 0) out[blockIdx.x] = sdata[0];
 }
 
+// Reduce one value per thread down to one value for the whole block, combining with `op`.
+// Every thread gets the result back.
+template <int BLOCK_SIZE, typename Op>
+__device__ float blockReduce(float v, float* sdata, Op op) {
+    int tid = threadIdx.x;
+    sdata[tid] = v;
+    __syncthreads();
+    for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
+        if (tid < s) sdata[tid] = op(sdata[tid], sdata[tid + s]);
+        __syncthreads();
+    }
+    float result = sdata[0];
+    __syncthreads();         // every thread reads the result before sdata can be reused
+    return result;
+}
+
+template <int BLOCK_SIZE>
+__global__ void softmaxKernel(const float* in, float* out, int rows, int cols) {
+    __shared__ float sdata[BLOCK_SIZE];
+    int tid = threadIdx.x;
+    const float* x = in  + blockIdx.x * cols;   
+    float*       y = out + blockIdx.x * cols;
+
+    float localMax = -INFINITY;
+    for (int c = tid; c < cols; c += BLOCK_SIZE) localMax = fmaxf(localMax, x[c]);
+    float rowMax = blockReduce<BLOCK_SIZE>(localMax, sdata, MaxOp{});
+
+    float localSum = 0.0f;
+    for (int c = tid; c < cols; c += BLOCK_SIZE) localSum += expf(x[c] - rowMax);
+    float rowSum = blockReduce<BLOCK_SIZE>(localSum, sdata, AddOp{});
+
+    for (int c = tid; c < cols; c += BLOCK_SIZE) y[c] = expf(x[c] - rowMax) / rowSum;
+}
+
+template <int BLOCK_SIZE>
+__global__ void softmaxCrossEntropyKernel(const float* logits, const float* labels,
+                                          float* probs, float* rowLoss, int rows, int cols) {
+    __shared__ float sdata[BLOCK_SIZE];
+    int tid = threadIdx.x, r = blockIdx.x;
+    const float* x = logits + r * cols;
+    float*       p = probs  + r * cols;
+
+    float localMax = -INFINITY;
+    for (int c = tid; c < cols; c += BLOCK_SIZE) localMax = fmaxf(localMax, x[c]);
+    float rowMax = blockReduce<BLOCK_SIZE>(localMax, sdata, MaxOp{});
+
+    float localSum = 0.0f;
+    for (int c = tid; c < cols; c += BLOCK_SIZE) localSum += expf(x[c] - rowMax);
+    float rowSum = blockReduce<BLOCK_SIZE>(localSum, sdata, AddOp{});
+
+    for (int c = tid; c < cols; c += BLOCK_SIZE) p[c] = expf(x[c] - rowMax) / rowSum;
+
+    if (tid == 0) {
+        int label = (int)labels[r];
+        rowLoss[r] = (label >= 0 && label < cols)
+                   ? rowMax + logf(rowSum) - x[label]   // -log softmax(x)[label]
+                   : NAN;                               // bad label: make it visible
+    }
+}
+
+__global__ void crossEntropyBackwardKernel(const float* probs, const float* labels, const float* g,
+                                           float* out, int rows, int cols) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= rows * cols) return;
+    int r = i / cols, c = i % cols;
+    float target = (c == (int)labels[r]) ? 1.0f : 0.0f;
+    out[i] = (probs[i] - target) * g[0] / rows;
+}
 
 Tensor unbroadcast(const Tensor& g, const std::vector<int>& target) {
     if (g.shape() == target) return g;                 // nothing was broadcast
@@ -488,9 +571,51 @@ Tensor operator/(const Tensor& a, const Tensor& b){
     return out;
 }
 
+Tensor exp(const Tensor& a) {
+    Tensor out = unaryOp(a, ExpOp{});
+    if (needsGrad(a)) {
+        // d/dx exp(x) = exp(x): reuse the output, detached to avoid a reference cycle
+        recordNode(out, "exp", {a}, [y = detach(out)](const Tensor& g) {
+            return std::vector<Tensor>{ g * y };
+        });
+    }
+    return out;
+}
 
+Tensor log(const Tensor& a) {
+    Tensor out = unaryOp(a, LogOp{});
+    if (needsGrad(a)) {
+        // d/dx log(x) = 1 / x
+        recordNode(out, "log", {a}, [a](const Tensor& g) {
+            return std::vector<Tensor>{ g / a };
+        });
+    }
+    return out;
+}
 
 //public tensor functions
+Tensor transpose(const Tensor& a){
+    if (a.shape().size() != 2)
+        throw std::runtime_error("transpose: expected a 2D tensor, got " + shapeToString(a.shape()));
+
+    int rows =  a.shape()[0];
+    int cols =  a.shape()[1];
+    Tensor out({cols,rows});
+    int n = out.numel(), threads = 256, blocks = (n + threads - 1) / threads;
+    if (n > 0){
+        transposeKernel<<<blocks, threads>>>(a.data(), rows, cols, out.data());
+        cudaCheck(cudaGetLastError(), "transpose launch");
+    }
+
+    if (needsGrad(a)){
+        recordNode(out, "transpose", {a}, [](const Tensor& g) {
+            return std::vector<Tensor>{ transpose(g) };
+        });
+    }
+
+    return out;
+    }
+
 Tensor naiveMatMul(const Tensor& a, const Tensor& b){
     
     if (a.shape().size() > 2 || b.shape().size() > 2){
@@ -583,6 +708,16 @@ Tensor jonsMatMul(const Tensor& a, const Tensor& b){
     return out;
 }
 
+Tensor matmul(const Tensor& a, const Tensor& b) {
+    Tensor out = tiledMatMul(a, b);
+    if (needsGrad(a, b)) {
+        recordNode(out, "matmul", {a, b}, [a, b](const Tensor& g) {
+            return std::vector<Tensor>{ matmul(g, transpose(b)), matmul(transpose(a), g) };
+        });
+    }
+    return out;
+}
+
 //pairwise sum
 Tensor sum(const Tensor& a) {
     constexpr int threads = 256;
@@ -646,8 +781,17 @@ Tensor dot(const Tensor & a, const Tensor & b){
 Tensor mean(const Tensor& a) {
     if (a.numel() == 0){
         throw std::runtime_error("empty tensor, devide by 0 error" + a.numel()); 
-    } 
-    return unaryOp(sum(a), ScaleOp{1.0f / a.numel()});
+    }
+    Tensor out = unaryOp(sum(a), ScaleOp{1.0f / a.numel()});
+
+    
+    if (needsGrad(a)) {
+        recordNode(out, "mean", {a}, [shape = a.shape(), n = a.numel()](const Tensor& g) {
+        return std::vector<Tensor>{ Tensor::full(shape, 1.0f / n) * g };
+        });
+    }
+
+    return out;
 }
 
 Tensor max(const Tensor& a) {
@@ -680,6 +824,76 @@ Tensor min(const Tensor& a) {
     minKernel<threads><<<1, threads>>>(partials.data(), out.data(), blocks);
     cudaCheck(cudaGetLastError(), "min pass 2");
     return out;
+}
+
+Tensor relu(const Tensor& a) {
+    Tensor out = unaryOp(a, ReluOp{});
+    if (needsGrad(a)) {
+        recordNode(out, "relu", {a}, [a](const Tensor& g) {
+            return std::vector<Tensor>{ binaryOp(g, a, ReluBackOp{}) };
+        });
+    }
+    return out;
+}
+
+Tensor softmax(const Tensor& a) {
+    if (a.shape().size() != 2)
+        throw std::runtime_error("softmax: expected a 2D tensor, got " + shapeToString(a.shape()));
+    int rows = a.shape()[0], cols = a.shape()[1];
+    Tensor out({rows, cols});
+    if (out.numel() > 0) {
+        constexpr int threads = 256;
+        softmaxKernel<threads><<<rows, threads>>>(a.data(), out.data(), rows, cols);
+        cudaCheck(cudaGetLastError(), "softmax launch");
+    }
+
+    if (needsGrad(a)) {
+        recordNode(out, "softmax", {a}, [y = detach(out)](const Tensor& g) {
+            return std::vector<Tensor>{ y * (g - sumAxis(g * y, 1)) };
+        });
+    }
+    return out;
+}
+
+Tensor softmaxCrossEntropy(const Tensor& logits, const Tensor& labels) {
+    if (logits.shape().size() != 2)
+        throw std::runtime_error("cross_entropy: logits must be 2D (batch, classes), got " +
+                                 shapeToString(logits.shape()));
+    int rows = logits.shape()[0], cols = logits.shape()[1];
+    if (labels.shape() != std::vector<int>{rows})
+        throw std::runtime_error("cross_entropy: labels must have shape [" + std::to_string(rows) +
+                                 "], got " + shapeToString(labels.shape()));
+    if (rows == 0 || cols == 0)
+        throw std::runtime_error("cross_entropy: empty input");
+
+    Tensor probs({rows, cols});
+    Tensor rowLoss({rows});
+    constexpr int threads = 256;
+    softmaxCrossEntropyKernel<threads><<<rows, threads>>>(logits.data(), labels.data(),
+                                                          probs.data(), rowLoss.data(), rows, cols);
+    cudaCheck(cudaGetLastError(), "cross_entropy launch");
+
+    // Mean over the batch. rowLoss doesn't require grad, so these steps record nothing.
+    Tensor out = unaryOp(sum(rowLoss), ScaleOp{1.0f / rows});
+
+    if (needsGrad(logits)) {
+        recordNode(out, "cross_entropy", {logits}, [probs, labels, rows, cols](const Tensor& g) {
+            Tensor dx({rows, cols});
+            int n = rows * cols, threads = 256, blocks = (n + threads - 1) / threads;
+            crossEntropyBackwardKernel<<<blocks, threads>>>(probs.data(), labels.data(), g.data(),
+                                                            dx.data(), rows, cols);
+            cudaCheck(cudaGetLastError(), "cross_entropy backward launch");
+            return std::vector<Tensor>{ dx };
+        });
+    }
+    return out;
+}
+
+Tensor detach(const Tensor& t) {
+    auto impl = std::make_shared<TensorImpl>();
+    impl->data = t.impl()->data;      // same values, no copy
+    impl->shape = t.shape();          // no grad_fn, requires_grad = false
+    return Tensor(impl);
 }
 
 

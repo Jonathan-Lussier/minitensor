@@ -83,6 +83,9 @@ class Tensor:
     def dot(self, arg: Tensor, /) -> Tensor:
         """dot product of two vectors."""
 
+    def matmul(self, arg: Tensor, /) -> Tensor:
+        """matmul of two matrices."""
+
     def naiveMatMul(self, arg: Tensor, /) -> Tensor:
         """Naive matmul, inefficient for long and narrow matrices."""
 
@@ -100,7 +103,22 @@ class Tensor:
         Sum of all elements, deivde by number of elements, returned as a tensor.
         """
 
+    def transpose(self) -> Tensor:
+        """Transpose tensor t"""
+
+    def exp(self) -> Tensor:
+        """Elementwise e^x."""
+
+    def log(self) -> Tensor:
+        """Elementwise natural log."""
+
     def __repr__(self) -> str: ...
+
+    def __str__(self) -> str: ...
+
+    def __array__(self, *args, **kwargs) -> object: ...
+
+    def item(self) -> float: ...
 
     @property
     def requires_grad(self) -> bool: ...
@@ -112,6 +130,15 @@ class Tensor:
     def grad(self) -> Tensor | None: ...
 
     def backward(self) -> None: ...
+
+    def relu(self) -> Tensor:
+        """Elementwise max(x, 0)."""
+
+    def softmax(self) -> Tensor:
+        """Row-wise softmax of a 2D tensor shaped (batch, classes)"""
+
+    def softmaxCrossEntropy(self, arg: Tensor, /) -> Tensor:
+        """Mean softmax cross-entropy loss over a batch."""
 
 def sum(a: Tensor) -> Tensor:
     """Sum of all elements of a tensor."""
@@ -136,10 +163,34 @@ def mean(a: Tensor) -> Tensor:
 def dot(a: Tensor, b: Tensor) -> Tensor:
     """dot product of two vectors."""
 
+def matmul(a: Tensor, b: Tensor) -> Tensor:
+    """default matrix multiplication of 2D tensors a and b."""
+
 def naiveMatMul(a: Tensor, b: Tensor) -> Tensor:
     """naive matrix multiplication of 2D tensors a and b."""
 
 def tiledMatMul(a: Tensor, b: Tensor) -> Tensor:
     """tiled matrix multiplication of 2D tensors a and b."""
 
+def transpose(a: Tensor) -> Tensor:
+    """simple transpose of tensor a."""
+
+def exp(a: Tensor) -> Tensor:
+    """Elementwise e^x."""
+
+def log(a: Tensor) -> Tensor:
+    """Elementwise natural log."""
+
 def synchronize() -> None: ...
+
+def relu(a: Tensor) -> Tensor:
+    """Elementwise max(x, 0)."""
+
+def softmax(x: Tensor) -> Tensor:
+    """Row-wise softmax of a 2D tensor shaped (batch, classes)"""
+
+def softmax_cross_entropy(logits: Tensor, labels: Tensor) -> Tensor:
+    """
+    Mean softmax cross-entropy loss over a batch.
+    A seperate softmax call is NOT needed.
+    """

@@ -122,3 +122,9 @@ def test_sum_axis(shape, axis):
     expected = x.sum(axis=axis, keepdims=True)
     assert result.shape == expected.shape
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+
+@pytest.mark.parametrize("shape", [(1, 1), (2, 3), (3, 2), (1, 7), (7, 1), (64, 100)])
+def test_transpose(shape):
+    x = rng.standard_normal(shape).astype(np.float32)
+    result = mt.transpose(mt.Tensor.from_numpy(x)).to_numpy()
+    np.testing.assert_array_equal(result, x.T)

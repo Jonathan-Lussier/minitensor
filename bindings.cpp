@@ -62,7 +62,11 @@ NB_MODULE(minitensor, m){
 
     .def("dot", [](const Tensor& t, const Tensor& s) { return dot(t, s); },         
         "dot product of two vectors.")
-    .def("naiveMatMul", [](const Tensor& t, const Tensor& s) { return naiveMatMul(t, s); },         
+
+    .def("matmul", [](const Tensor& t, const Tensor& s) { return matmul(t, s); },         
+        "matmul of two matrices.")
+
+        .def("naiveMatMul", [](const Tensor& t, const Tensor& s) { return naiveMatMul(t, s); },         
         "Naive matmul, inefficient for long and narrow matrices.")
     .def("tiledMatMul", [](const Tensor& t, const Tensor& s) { return tiledMatMul(t, s); },         
         "tiledMatMul matmul, more efficient.")
@@ -72,8 +76,29 @@ NB_MODULE(minitensor, m){
         "Minimum of all elements, returned as a tensor.")
     .def("mean", [](const Tensor& t) { return mean(t); },         
         "Sum of all elements, deivde by number of elements, returned as a tensor.")
+    .def("transpose", [](const Tensor& t) { return transpose(t); },
+        "Transpose tensor t")
+    .def("exp", &exp, "Elementwise e^x.")
+    .def("log", &log, "Elementwise natural log.")
     .def("__repr__", [](const Tensor& t) {
         return "Tensor(shape=" + shapeToString(t.shape()) + ")";})
+    .def("__str__", [](nb::handle self) {
+        const Tensor& t = nb::cast<const Tensor&>(self);
+        std::string header = "Tensor(shape=" + shapeToString(t.shape());
+        if (t.requiresGrad()) header += ", requires_grad=True";
+        header += ")\n";
+        nb::object arr = self.attr("to_numpy")();
+        return header + std::string(nb::str(arr).c_str()); })
+    .def("__array__", [](nb::handle self, nb::args, nb::kwargs) {
+        return self.attr("to_numpy")();})
+    .def("item", [](const Tensor& t) {
+        if (t.numel() != 1)
+            throw std::runtime_error("item: only works on single-element tensors, got shape " +
+                                        shapeToString(t.shape()));
+        float v;
+        t.copyToHost(&v);          // copies just 4 bytes from the GPU
+        return v;                  // a C++ float becomes a Python float
+        })
 
     // grad stuff
     .def_prop_rw("requires_grad", &Tensor::requiresGrad, &Tensor::setRequiresGrad)
@@ -82,6 +107,10 @@ NB_MODULE(minitensor, m){
                 return t.grad();
         })
     .def("backward", &Tensor::backward)
+    .def("relu", &relu, "Elementwise max(x, 0).")
+    .def("softmax", &softmax, "Row-wise softmax of a 2D tensor shaped (batch, classes)")
+    .def("softmaxCrossEntropy", &softmaxCrossEntropy, "Mean softmax cross-entropy loss over a batch.")
+    
     ;
 
 
@@ -96,7 +125,17 @@ NB_MODULE(minitensor, m){
     m.def("min", &min, nb::arg("a"), "Minimum of all elements of a tensor.");
     m.def("mean", &mean, nb::arg("a"), "mean of all elements of a tensor.");
     m.def("dot", &dot, nb::arg("a"), nb::arg("b"), "dot product of two vectors.");
+    m.def("matmul", &matmul, nb::arg("a"), nb::arg("b"), "default matrix multiplication of 2D tensors a and b.");
     m.def("naiveMatMul", &naiveMatMul, nb::arg("a"), nb::arg("b"), "naive matrix multiplication of 2D tensors a and b.");
     m.def("tiledMatMul", &tiledMatMul, nb::arg("a"), nb::arg("b"), "tiled matrix multiplication of 2D tensors a and b.");
+    m.def("transpose", &transpose, nb::arg("a"), "simple transpose of tensor a.");
+    m.def("exp", &exp, nb::arg("a"), "Elementwise e^x.");
+    m.def("log", &log, nb::arg("a"), "Elementwise natural log.");
     m.def("synchronize", &synchronize);
+    m.def("relu", &relu, nb::arg("a"), "Elementwise max(x, 0).");
+    m.def("softmax", &softmax, nb::arg("x"),
+        "Row-wise softmax of a 2D tensor shaped (batch, classes)");
+    m.def("softmax_cross_entropy", &softmaxCrossEntropy, nb::arg("logits"), nb::arg("labels"),
+          "Mean softmax cross-entropy loss over a batch.\n"
+          "A seperate softmax call is NOT needed.");
 }

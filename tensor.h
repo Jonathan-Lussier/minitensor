@@ -51,6 +51,8 @@ public:
     void backward();
     static Tensor full(const std::vector<int>& shape, float value);   
     const std::shared_ptr<TensorImpl>& implPtr() const { return impl_; }
+
+    void zeroGrad() { impl_->grad = nullptr; }
     
 private:
     std::shared_ptr<TensorImpl> impl_;

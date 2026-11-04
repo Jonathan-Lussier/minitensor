@@ -23,7 +23,7 @@ find_package(nanobind CONFIG REQUIRED)
 
 
 
-add_library(tensor_core STATIC tensor.cu)
+add_library(tensor_core STATIC tensor.cu ops.cu nn.cu)
 target_link_libraries(tensor_core PUBLIC CUDA::cudart)
 target_include_directories(tensor_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

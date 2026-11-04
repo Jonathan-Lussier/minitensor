@@ -17,3 +17,5 @@ jupyterlab
 
 #testing
 pytest
+
+pytorch

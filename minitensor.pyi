@@ -1,4 +1,4 @@
-"""Minimal float32 tensor library backed by CUDA."""
+"""Minimal float32 tensor library built on CUDA. GPU only."""
 
 from collections.abc import Sequence
 from typing import Annotated, overload
@@ -70,7 +70,7 @@ class Tensor:
     def sum(self) -> Tensor:
         """Sum of all elements, returned as a tensor."""
 
-    def sumAxis(self, axis: int) -> Tensor:
+    def sum_axis(self, axis: int) -> Tensor:
         """
         Sum a 2D tensor along one axis, keeping it as size 1. axis=0: sum down each column, (rows, cols) -> (1, cols). axis=1: sum across each row, (rows, cols) -> (rows, 1).
         """
@@ -86,11 +86,11 @@ class Tensor:
     def matmul(self, arg: Tensor, /) -> Tensor:
         """matmul of two matrices."""
 
-    def naiveMatMul(self, arg: Tensor, /) -> Tensor:
+    def naive_matMul(self, arg: Tensor, /) -> Tensor:
         """Naive matmul, inefficient for long and narrow matrices."""
 
-    def tiledMatMul(self, arg: Tensor, /) -> Tensor:
-        """tiledMatMul matmul, more efficient."""
+    def tiled_matMul(self, arg: Tensor, /) -> Tensor:
+        """tiled MatMul matmul, more efficient."""
 
     def max(self) -> Tensor:
         """Maximum of all elements, returned as a tensor."""
@@ -131,19 +131,25 @@ class Tensor:
 
     def backward(self) -> None: ...
 
+    def zero_grad(self) -> None:
+        """Clear this tensor's gradient (sets grad to None)."""
+
     def relu(self) -> Tensor:
         """Elementwise max(x, 0)."""
 
     def softmax(self) -> Tensor:
         """Row-wise softmax of a 2D tensor shaped (batch, classes)"""
 
-    def softmaxCrossEntropy(self, arg: Tensor, /) -> Tensor:
+    def softmax_cross_entropy(self, arg: Tensor, /) -> Tensor:
         """Mean softmax cross-entropy loss over a batch."""
+
+    def __matmul__(self, other: Tensor) -> Tensor:
+        """Matrix multiplication with gradient support: a @ b."""
 
 def sum(a: Tensor) -> Tensor:
     """Sum of all elements of a tensor."""
 
-def sumAxis(a: Tensor, axis: int) -> Tensor:
+def sum_axis(a: Tensor, axis: int) -> Tensor:
     """
     Sum a 2D tensor along one axis, keeping it as size 1 (see Tensor.sum_axis).
     """
@@ -163,13 +169,18 @@ def mean(a: Tensor) -> Tensor:
 def dot(a: Tensor, b: Tensor) -> Tensor:
     """dot product of two vectors."""
 
+@overload
 def matmul(a: Tensor, b: Tensor) -> Tensor:
     """default matrix multiplication of 2D tensors a and b."""
 
-def naiveMatMul(a: Tensor, b: Tensor) -> Tensor:
+@overload
+def matmul(a: Tensor, b: Tensor) -> Tensor:
+    """Matrix multiplication with gradient support."""
+
+def naive_matMul(a: Tensor, b: Tensor) -> Tensor:
     """naive matrix multiplication of 2D tensors a and b."""
 
-def tiledMatMul(a: Tensor, b: Tensor) -> Tensor:
+def tiled_matMul(a: Tensor, b: Tensor) -> Tensor:
     """tiled matrix multiplication of 2D tensors a and b."""
 
 def transpose(a: Tensor) -> Tensor:
@@ -194,3 +205,14 @@ def softmax_cross_entropy(logits: Tensor, labels: Tensor) -> Tensor:
     Mean softmax cross-entropy loss over a batch.
     A seperate softmax call is NOT needed.
     """
+
+def sgd_step(param: Tensor, lr: float) -> None:
+    """
+    In-place SGD update: param -= lr * param.grad. Does nothing if param has no gradient.
+    """
+
+def set_grad_enabled(enabled: bool) -> None:
+    """Turn graph recording on or off globally."""
+
+def is_grad_enabled() -> bool:
+    """Return whether graph recording is currently on."""

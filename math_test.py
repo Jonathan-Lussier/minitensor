@@ -75,7 +75,7 @@ MATMUL_SHAPES = [((2, 2), (2, 3)), ((10, 10), (10, 5)), ((2, 1), (1, 3)),
 def test_naiveMatMul(shape_a, shape_b):
     a = rng.standard_normal(shape_a, dtype=np.float32)
     b = rng.standard_normal(shape_b, dtype=np.float32)
-    result = mt.naiveMatMul(mt.Tensor.from_numpy(a), mt.Tensor.from_numpy(b)).to_numpy()
+    result = mt.naive_matMul(mt.Tensor.from_numpy(a), mt.Tensor.from_numpy(b)).to_numpy()
     expected = a @ b
     assert result.shape == expected.shape
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
@@ -86,7 +86,7 @@ def test_naiveMatMul_bad_shapes_raise(shape_a, shape_b):
     a = mt.Tensor.from_numpy(np.ones(shape_a, dtype=np.float32))
     b = mt.Tensor.from_numpy(np.ones(shape_b, dtype=np.float32))
     with pytest.raises(RuntimeError):
-        mt.naiveMatMul(a, b)
+        mt.naive_matMul(a, b)
 
 DOT_SHAPES = [(1,1), (2,2), (10,10), (255,255), (256,256), (4_000_001, 4_000_001)]
 @pytest.mark.parametrize("shape_a,shape_b", DOT_SHAPES)
@@ -109,7 +109,7 @@ def test_dot_bad_shapes(shape_a, shape_b):
 def test_tiledMatMul(shape_a, shape_b):
     a = rng.standard_normal(shape_a, dtype=np.float32)
     b = rng.standard_normal(shape_b, dtype=np.float32)
-    result = mt.tiledMatMul(mt.Tensor.from_numpy(a), mt.Tensor.from_numpy(b)).to_numpy()
+    result = mt.tiled_matMul(mt.Tensor.from_numpy(a), mt.Tensor.from_numpy(b)).to_numpy()
     expected = a @ b
     assert result.shape == expected.shape
     np.testing.assert_allclose(result, expected, rtol=1e-4, atol=1e-3)
@@ -118,7 +118,7 @@ def test_tiledMatMul(shape_a, shape_b):
 @pytest.mark.parametrize("axis", [0, 1])
 def test_sum_axis(shape, axis):
     x = rng.standard_normal(shape).astype(np.float32)
-    result = mt.sumAxis(mt.Tensor.from_numpy(x), axis).to_numpy()
+    result = mt.sum_axis(mt.Tensor.from_numpy(x), axis).to_numpy()
     expected = x.sum(axis=axis, keepdims=True)
     assert result.shape == expected.shape
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)

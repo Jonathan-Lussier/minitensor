@@ -57,10 +57,27 @@ namespace {
                     : NAN;                               // bad label: make it visible
         }
     }
+
+
+
+    __global__ void sgdKernel(float* p, const float* g, float lr, int n) {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i < n) p[i] -= lr * g[i];
+    }
 }
 
 
 //public stuffs
+void sgdStep(const Tensor& p, float lr) {
+    if (!p.hasGrad()) return;                 // nothing flowed to this parameter
+    Tensor g = p.grad();
+    int n = p.numel();
+    if (n == 0) return;
+    int threads = 256, blocks = (n + threads - 1) / threads;
+    sgdKernel<<<blocks, threads>>>(p.data(), g.data(), lr, n);
+    cudaCheck(cudaGetLastError(), "sgd launch");
+}
+
 Tensor relu(const Tensor& a) {
     Tensor out = unaryOp(a, ReluOp{});
     if (needsGrad(a)) {

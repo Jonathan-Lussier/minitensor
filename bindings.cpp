@@ -12,7 +12,7 @@ namespace nb = nanobind;
 using CpuArray = nb::ndarray<const float, nb::c_contig, nb::device::cpu>;
 
 NB_MODULE(minitensor, m){
-    m.doc() = "Minimal float32 tensor library backed by CUDA.";
+    m.doc() = "Minimal float32 tensor library built on CUDA. GPU only.";
 
     nb::class_<Tensor>(m, "Tensor", "A float32 tensor stored on the GPU.")
         .def_static("from_list", &Tensor::fromHost, nb::arg("shape"), nb::arg("values"),
@@ -52,7 +52,7 @@ NB_MODULE(minitensor, m){
     .def("sum", [](const Tensor& t) { return sum(t); },         
         "Sum of all elements, returned as a tensor.")
 
-    .def("sumAxis", &sumAxis, nb::arg("axis"),
+    .def("sum_axis", &sumAxis, nb::arg("axis"),
             "Sum a 2D tensor along one axis, keeping it as size 1. "
             "axis=0: sum down each column, (rows, cols) -> (1, cols). "
             "axis=1: sum across each row, (rows, cols) -> (rows, 1).")
@@ -66,10 +66,10 @@ NB_MODULE(minitensor, m){
     .def("matmul", [](const Tensor& t, const Tensor& s) { return matmul(t, s); },         
         "matmul of two matrices.")
 
-        .def("naiveMatMul", [](const Tensor& t, const Tensor& s) { return naiveMatMul(t, s); },         
+        .def("naive_matMul", [](const Tensor& t, const Tensor& s) { return naiveMatMul(t, s); },         
         "Naive matmul, inefficient for long and narrow matrices.")
-    .def("tiledMatMul", [](const Tensor& t, const Tensor& s) { return tiledMatMul(t, s); },         
-        "tiledMatMul matmul, more efficient.")
+    .def("tiled_matMul", [](const Tensor& t, const Tensor& s) { return tiledMatMul(t, s); },         
+        "tiled MatMul matmul, more efficient.")
     .def("max", [](const Tensor& t) { return max(t); },         
         "Maximum of all elements, returned as a tensor.")
     .def("min", [](const Tensor& t) { return min(t); },         
@@ -107,17 +107,18 @@ NB_MODULE(minitensor, m){
                 return t.grad();
         })
     .def("backward", &Tensor::backward)
+    .def("zero_grad", &Tensor::zeroGrad, "Clear this tensor's gradient (sets grad to None).")
     .def("relu", &relu, "Elementwise max(x, 0).")
     .def("softmax", &softmax, "Row-wise softmax of a 2D tensor shaped (batch, classes)")
-    .def("softmaxCrossEntropy", &softmaxCrossEntropy, "Mean softmax cross-entropy loss over a batch.")
-    
+    .def("softmax_cross_entropy", &softmaxCrossEntropy, "Mean softmax cross-entropy loss over a batch.")
+    .def("__matmul__", &matmul, nb::arg("other"), "Matrix multiplication with gradient support: a @ b.")
     ;
 
 
 
 
     m.def("sum", &sum, nb::arg("a"), "Sum of all elements of a tensor.");
-    m.def("sumAxis", &sumAxis, nb::arg("a"), nb::arg("axis"),
+    m.def("sum_axis", &sumAxis, nb::arg("a"), nb::arg("axis"),
         "Sum a 2D tensor along one axis, keeping it as size 1 (see Tensor.sum_axis).");
     m.def("reshape", &reshape, nb::arg("a"), nb::arg("shape"),
           "Reshape a tensor without copying its data (see Tensor.reshape).");
@@ -126,8 +127,8 @@ NB_MODULE(minitensor, m){
     m.def("mean", &mean, nb::arg("a"), "mean of all elements of a tensor.");
     m.def("dot", &dot, nb::arg("a"), nb::arg("b"), "dot product of two vectors.");
     m.def("matmul", &matmul, nb::arg("a"), nb::arg("b"), "default matrix multiplication of 2D tensors a and b.");
-    m.def("naiveMatMul", &naiveMatMul, nb::arg("a"), nb::arg("b"), "naive matrix multiplication of 2D tensors a and b.");
-    m.def("tiledMatMul", &tiledMatMul, nb::arg("a"), nb::arg("b"), "tiled matrix multiplication of 2D tensors a and b.");
+    m.def("naive_matMul", &naiveMatMul, nb::arg("a"), nb::arg("b"), "naive matrix multiplication of 2D tensors a and b.");
+    m.def("tiled_matMul", &tiledMatMul, nb::arg("a"), nb::arg("b"), "tiled matrix multiplication of 2D tensors a and b.");
     m.def("transpose", &transpose, nb::arg("a"), "simple transpose of tensor a.");
     m.def("exp", &exp, nb::arg("a"), "Elementwise e^x.");
     m.def("log", &log, nb::arg("a"), "Elementwise natural log.");
@@ -137,5 +138,13 @@ NB_MODULE(minitensor, m){
         "Row-wise softmax of a 2D tensor shaped (batch, classes)");
     m.def("softmax_cross_entropy", &softmaxCrossEntropy, nb::arg("logits"), nb::arg("labels"),
           "Mean softmax cross-entropy loss over a batch.\n"
-          "A seperate softmax call is NOT needed.");
+          "A seperate softmax call is NOT needed.");  
+    m.def("sgd_step", &sgdStep, nb::arg("param"), nb::arg("lr"),
+          "In-place SGD update: param -= lr * param.grad. Does nothing if param has no gradient.");
+    m.def("set_grad_enabled", &setGradEnabled, nb::arg("enabled"),
+          "Turn graph recording on or off globally.");
+    m.def("is_grad_enabled", &isGradEnabled,
+          "Return whether graph recording is currently on.");
+    m.def("matmul", &matmul, nb::arg("a"), nb::arg("b"),
+          "Matrix multiplication with gradient support.");
 }

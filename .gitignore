@@ -172,3 +172,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+#specific compiled python libs:
+*.pyd
+*.so

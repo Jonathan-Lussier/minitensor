@@ -17,5 +17,5 @@ jupyterlab
 
 #testing
 pytest
-
 pytorch
+nanobind

@@ -285,7 +285,8 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
     Tensor out = tiledMatMul(a, b);
     if (needsGrad(a, b)) {
         recordNode(out, "matmul", {a, b}, [a, b](const Tensor& g) {
-            return std::vector<Tensor>{ matmul(g, transpose(b)), matmul(transpose(a), g) };
+            return std::vector<Tensor>{ a.requiresGrad() ? matmul(g, transpose(b)) : a,
+                                        b.requiresGrad() ? matmul(transpose(a), g) : b };
         });
     }
     return out;

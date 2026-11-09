@@ -12,11 +12,62 @@ using namespace detail;
 #include <stdexcept>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
+#include <mutex>
 
 //simaliar to p1, but built for python binding
 
 namespace {
     bool g_gradEnabled = true;
+
+    //GPU buffers ready to reuse without calling the driver
+    constexpr size_t kMaxCachedPerSize = 64;
+    struct BufferPool {
+        std::mutex mutex;
+        std::unordered_map<size_t, std::vector<float*>> buffers;
+    };
+    BufferPool& bufferPool() { static BufferPool* pool = new BufferPool; return *pool; }
+
+    void dropCachedBuffers() {
+        BufferPool& pool = bufferPool();
+        std::lock_guard<std::mutex> lock(pool.mutex);
+        for (auto& [bytes, list] : pool.buffers) {
+            for (float* p : list) cudaFree(p);
+            list.clear();
+        }
+    }
+
+    float* acquireBuffer(size_t bytes) {
+        BufferPool& pool = bufferPool();
+        {
+            std::lock_guard<std::mutex> lock(pool.mutex);
+            auto it = pool.buffers.find(bytes);
+            if (it != pool.buffers.end() && !it->second.empty()) {
+                float* p = it->second.back();
+                it->second.pop_back();
+                return p;
+            }
+        }
+        float* ptr = nullptr;
+        cudaError_t err = cudaMalloc(&ptr, bytes);
+        if (err == cudaErrorMemoryAllocation) {        // out of memory: give back the cache and retry
+            dropCachedBuffers();
+            err = cudaMalloc(&ptr, bytes);
+        }
+        cudaCheck(err, "cudaMalloc");
+        return ptr;
+    }
+
+    void releaseBuffer(float* p, size_t bytes) {
+        BufferPool& pool = bufferPool();
+        {
+            std::lock_guard<std::mutex> lock(pool.mutex);
+            auto& list = pool.buffers[bytes];
+            if (list.size() < kMaxCachedPerSize) { list.push_back(p); return; }
+        }
+        cudaFree(p);
+    }
+
     void accumulateGrad(const Tensor& t, const Tensor& g) {
         TensorImpl* impl = t.impl();
         if (!impl->grad) impl->grad = g.implPtr();                       // first gradient: store it
@@ -125,10 +176,9 @@ Tensor reshape(const Tensor& a, const std::vector<int>& shape) {
 // CPU side tensor class
 Tensor::Tensor(const std::vector<int>& shape) : impl_(std::make_shared<TensorImpl>()) {
     impl_->shape = shape;                         
-    float* ptr = nullptr;
-    cudaCheck(cudaMalloc(&ptr, numel() * sizeof(float)), "cudaMalloc");
-    // shared_ptr frees the GPU memory when the last Tensor using it is destroyed
-    impl_->data = std::shared_ptr<float>(ptr, [](float* p) { cudaFree(p); });
+    size_t bytes = numel() * sizeof(float);
+    float* ptr = acquireBuffer(bytes); //uses a pointer so the buffer is freed when not used by any tensors
+    impl_->data = std::shared_ptr<float>(ptr, [bytes](float* p) { releaseBuffer(p, bytes); });
 }
 
 int Tensor::numel() const {

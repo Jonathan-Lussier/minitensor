@@ -11,10 +11,11 @@ minitensor is a GPU tensor library built from the ground up: hand-written CUDA k
 
 It is small enough to read in an afternoon (about 1,100 lines of C++/CUDA in the core library) yet complete enough to train a neural network: a two-layer MLP on MNIST is under 100 lines of Python and reaches **~93% test accuracy in about a second**.
 
-I built it for two reasons:
+I built it for three reasons:
 
-1. **To understand what PyTorch actually does.** Every piece, from kernel launches and memory management to broadcasting and backprop, is implemented by hand and kept readable.
-2. **To have a lightweight harness for writing and testing CUDA kernels.** Write a kernel in C++, expose it to Python in one line, then check it against NumPy or PyTorch and run a numeric gradient check with pytest.
+1. **To learn CUDA and ML-optimized processing.** This project served to teach me, from the hardware layer and machine code up, how to write and use CUDA and similar machine learning-optimized processing operations.  I wanted a foundational understanding, not just the ability to use, CUDA and GPU processing.
+2. **To understand what PyTorch actually does.** Every piece, from kernel launches and memory management to broadcasting and backprop, is implemented by hand and kept readable.
+3. **To have a lightweight harness for writing and testing CUDA kernels.** Write a kernel in C++, expose it to Python in one line, then check it against NumPy or PyTorch and run a numeric gradient check with pytest.
 
 ```python
 import minitensor as mt

@@ -41,5 +41,5 @@ nanobind_add_stub(
 )
 
 
-add_executable(test_main tensor_test_main.cpp)
+add_executable(test_main tests/tensor_test_main.cpp)
 target_link_libraries(test_main PRIVATE tensor_core)

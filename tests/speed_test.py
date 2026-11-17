@@ -59,8 +59,8 @@ def main():
         tb = mt.Tensor.from_numpy(b)
 
         results = {}
-        results["naive"] = time_it(lambda: mt.Tensor.naiveMatMul(ta, tb), sync=mt.synchronize)
-        results["tiled"] = time_it(lambda: mt.Tensor.tiledMatMul(ta, tb), sync=mt.synchronize)
+        results["naive"] = time_it(lambda: mt.Tensor.naive_matMul(ta, tb), sync=mt.synchronize)
+        results["tiled"] = time_it(lambda: mt.Tensor.tiled_matMul(ta, tb), sync=mt.synchronize)
         results["numpy"] = time_it(lambda: a @ b)
 
         cells = [f"{t * 1e3:8.2f} ms {gflops(M, K, N, t):5.0f}GF/s" for t in results.values()]

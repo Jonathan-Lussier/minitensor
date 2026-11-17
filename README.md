@@ -13,7 +13,7 @@ It is small enough to read in an afternoon (about 1,100 lines of C++/CUDA in the
 
 I built it for three reasons:
 
-1. **To learn CUDA and ML-optimized processing.** This project served to teach me, from the hardware layer and machine code up, how to write and use CUDA and similar machine learning-optimized processing operations.  I wanted a foundational understanding, not just the ability to use, CUDA and GPU processing.
+1. **To learn CUDA and ML-optimized processing.** This project served to teach me, from the hardware layer and machine code up, how to write and use CUDA and similar machine learning-optimized processing operations. I wanted a foundational understanding, not just the ability to use, CUDA and GPU processing.
 2. **To understand what PyTorch actually does.** Every piece, from kernel launches and memory management to broadcasting and backprop, is implemented by hand and kept readable.
 3. **To have a lightweight harness for writing and testing CUDA kernels.** Write a kernel in C++, expose it to Python in one line, then check it against NumPy or PyTorch and run a numeric gradient check with pytest.
 
@@ -21,15 +21,17 @@ I built it for three reasons:
 import minitensor as mt
 import numpy as np
 
-W = mt.Tensor.from_numpy(np.random.randn(784, 128).astype(np.float32) * 0.05)
-W.requires_grad = True
+W1 = mt.Tensor.from_numpy(np.random.randn(784, 128).astype(np.float32) * 0.05)
+W2 = mt.Tensor.from_numpy(np.random.randn(128, 10).astype(np.float32) * 0.1)
+W1.requires_grad = W2.requires_grad = True
 
-x = mt.Tensor.from_numpy(batch_images)            # (64, 784), copied to the GPU
-y = mt.Tensor.from_numpy(batch_labels)            # (64,)
+x = mt.Tensor.from_numpy(batch_images)            # float32 (64, 784), copied to the GPU
+y = mt.Tensor.from_numpy(batch_labels)            # float32 (64,) class indices
 
-loss = mt.softmax_cross_entropy(mt.relu(x @ W) @ W2, y)
+loss = mt.softmax_cross_entropy(mt.relu(x @ W1) @ W2, y)
 loss.backward()                                   # gradients computed on the GPU
-mt.sgd_step(W, lr=0.075)                          # in-place update, no host round-trip
+for p in (W1, W2):
+    mt.sgd_step(p, lr=0.075)                      # in-place update, no host round-trip
 ```
 
 ---
@@ -44,19 +46,19 @@ mt.sgd_step(W, lr=0.075)                          # in-place update, no host rou
 
 ## Results
 
-The MNIST benchmark (`mlp_benchmark.py`) trains the same 784 → 128 → 10 ReLU MLP three times, with identical initialization, batch size 64, learning rate 0.075 and plain SGD:
+The MNIST benchmark (`tests/mlp_benchmark.py`) trains the same 784 → 128 → 10 ReLU MLP three times, with identical initialization, batch size 64, learning rate 0.075 and plain SGD:
 
 | Implementation | Device | Time / epoch | Test accuracy (epoch 1) | Test accuracy (epoch 10) |
 |---|---|---|---|---|
 | **minitensor** | GPU | 0.2 s | 93.25 % | 97.35 % |
-| PyTorch | GPU | 0.8-0.6 s | 93.25 % | 97.34 % |
+| PyTorch | GPU | 0.6–0.8 s | 93.25 % | 97.34 % |
 | NumPy | CPU | 0.4 s | 93.25 % | 97.34 % |
 
-<sub>Measured on: NVIDIA 5060 Ti, Intel Ultra 7 265KF, Windows 11.</sub>
+<sub>Measured on: NVIDIA GeForce RTX 5060 Ti, Intel Core Ultra 7 265KF, Windows 11.</sub>
 
-On this workload, minitensor runs an epoch about **2× faster than both PyTorch and NumPy**. To be clear about why: at batch size 64 the matrices are tiny, so runtime is dominated by per-op overhead rather than arithmetic. minitensor's ops are thin calls straight into a CUDA kernel, using pooled memory. PyTorch carries general-purpose dispatch machinery that pays off at larger scales. This is a result about overhead on small models, not a claim that the kernels beat cuBLAS.
+On this workload, minitensor runs an epoch about **2× faster than NumPy and 3–4× faster than PyTorch**. To be clear about why: at batch size 64 the matrices are tiny, so runtime is dominated by per-op overhead rather than arithmetic. minitensor's ops are thin calls straight into a CUDA kernel, using pooled memory. PyTorch carries general-purpose dispatch machinery that pays off at larger scales. This is a result about overhead on small models, not a claim that the kernels beat cuBLAS.
 
-The matmul benchmark (`speed_test.py`) compares the naive kernel, the tiled kernel and NumPy across shapes from 256³ up to 4096³ and reports ms and GFLOP/s for each.
+The matmul benchmark (`tests/speed_test.py`) compares the naive kernel, the tiled kernel and NumPy across shapes from 256³ up to 4096³ and reports ms and GFLOP/s for each.
 
 ## Getting started
 
@@ -81,15 +83,17 @@ cmake --build build --config Release
 
 The build puts the compiled module (`minitensor.*.pyd` on Windows, `minitensor.*.so` on Linux) in the project root and regenerates `minitensor.pyi`, so `import minitensor` works from the repo directory.
 
-> **GPU architecture:** `CMakeLists.txt` targets compute capability 8.9 (RTX 40-series) via `set(CMAKE_CUDA_ARCHITECTURES 89)`. Change `89` to match your card, for example `86` for RTX 30-series, `75` for RTX 20-series or `80` for A100. Look up your card's compute capability on [NVIDIA's CUDA GPUs page](https://developer.nvidia.com/cuda-gpus).
+> **GPU architecture:** `CMakeLists.txt` targets compute capability 8.9 (RTX 40-series) via `set(CMAKE_CUDA_ARCHITECTURES 89)`. Change `89` to match your card, for example `120` for RTX 50-series (needs CUDA 12.8 or newer), `86` for RTX 30-series, `75` for RTX 20-series or `80` for A100. Look up your card's compute capability on [NVIDIA's CUDA GPUs page](https://developer.nvidia.com/cuda-gpus).
 
 ### Run
 
+Run everything from the repo root, so Python can find the compiled module and the `MNIST/` folder:
+
 ```bash
-python mlp_test.py         # train an MLP on MNIST (the dataset is included in MNIST/)
-python mlp_benchmark.py    # same model in minitensor vs NumPy vs PyTorch
-python speed_test.py       # matmul kernels vs NumPy, in ms and GFLOP/s
-pytest grad_test.py math_test.py training_test.py
+python -m tests.mlp_test         # train an MLP on MNIST (the dataset is included in MNIST/)
+python -m tests.mlp_benchmark    # same model in minitensor vs NumPy vs PyTorch
+python -m tests.speed_test       # matmul kernels vs NumPy, in ms and GFLOP/s
+python -m pytest tests           # the full test suite
 ```
 
 ## Using minitensor
@@ -160,7 +164,7 @@ For a kernel that isn't elementwise (a reduction, a custom matmul, a fused op), 
 m.def("sigmoid", &sigmoid, nb::arg("a"), "Elementwise logistic sigmoid.");
 ```
 
-**4. Test it** (`grad_test.py`, which already provides `numeric_grad` and `value_of`):
+**4. Test it** (`tests/grad_test.py`, which already provides `numeric_grad` and `value_of`):
 
 ```python
 def test_sigmoid_grad():
@@ -172,7 +176,7 @@ def test_sigmoid_grad():
     np.testing.assert_allclose(x.grad.to_numpy(), numeric_grad(loss, x_np), rtol=1e-2, atol=1e-3)
 ```
 
-Rebuild, and the new op is available in Python, autocompletes in your IDE and works inside any model. To time it, `time_it(fn, sync=mt.synchronize)` in `speed_test.py` does warmup, GPU synchronization and median timing.
+Rebuild, and the new op is available in Python, autocompletes in your IDE and works inside any model. To time it, `time_it(fn, sync=mt.synchronize)` in `tests/speed_test.py` does warmup, GPU synchronization and median timing.
 
 ## How it works
 
@@ -208,9 +212,11 @@ flowchart LR
 | `bindings.cpp` | nanobind Python module |
 | `minitensor.pyi` | Generated type stub for IDE autocomplete |
 | `mt_utils.py` | Python helpers (`no_grad` context manager) |
-| `grad_test.py`, `math_test.py`, `training_test.py` | pytest suites: autograd, forward math, training (SGD, linear regression, XOR) |
-| `mlp_test.py`, `mlp_benchmark.py`, `speed_test.py` | MNIST training, framework comparison, matmul benchmark |
-| `vector_add.cu`, `gpuOpsP1.cu`, `tensor_example.cu`, … | Earlier standalone CUDA experiments that the library grew out of |
+| `tests/grad_test.py`, `tests/math_test.py`, `tests/training_test.py` | pytest suites: autograd, forward math, training (SGD, linear regression, XOR) |
+| `tests/mlp_test.py`, `tests/mlp_benchmark.py`, `tests/speed_test.py` | MNIST training, framework comparison, matmul benchmark |
+| `tests/tensor_test_main.cpp` | Small C++ program that uses the library directly, without Python |
+| `MNIST/` | The MNIST dataset, used by the MLP scripts |
+| `past_scripts/` | Earlier standalone CUDA experiments that the library grew out of |
 
 ## Limitations
 

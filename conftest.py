@@ -1,0 +1,1 @@
+collect_ignore = ["tests/manual_test.py", "tests/mlp_test.py", "tests/mlp_benchmark.py", "tests/speed_test.py"]

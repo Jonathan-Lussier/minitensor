@@ -222,7 +222,7 @@ flowchart LR
 
 minitensor is deliberately minimal. Know these before you build on it:
 
-- **float32 only**, **GPU only**, and tensors are **at most 2D**.
+- **float32 only**, **GPU only**, and tensors are **at most 2D for grad operations**.
 - Ops run on the default CUDA stream, and there is no multi-GPU support.
 - `backward()` must be called on a single-element tensor, such as a loss.
 - The optimizer is plain SGD (`sgd_step`), and there is no module or layer abstraction yet.
